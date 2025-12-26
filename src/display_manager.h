@@ -306,12 +306,20 @@ inline void DisplayManager::drawBattery(int x, int y) {
     if (!_battery) return;
 
     uint8_t pct = _battery->getPercent();
+    int w = 20;
+    int h = 10;
 
-    // Just show percentage text (no icon fill - easier to read)
+    // Battery outline only (no fill)
+    _display->drawFrame(x, y, w, h);
+    _display->drawBox(x + w, y + 3, 2, h - 6);  // Battery tip
+
+    // Percentage text inside (centered)
     char buf[5];
-    snprintf(buf, sizeof(buf), "%d%%", pct);
+    snprintf(buf, sizeof(buf), "%d", pct);
+    _display->setFont(u8g2_font_5x7_tf);
+    int textWidth = _display->getStrWidth(buf);
+    _display->drawStr(x + (w - textWidth) / 2, y + 8, buf);
     _display->setFont(u8g2_font_6x10_tf);
-    _display->drawStr(x, y + 10, buf);
 }
 
 inline void DisplayManager::drawStatusScreen() {
@@ -441,9 +449,22 @@ inline void DisplayManager::drawMenu() {
 
     const int startY = 24;
     const int lineHeight = 10;
+    const int maxVisible = 5;
+    const int totalItems = (int)MenuItem::MENU_COUNT;
 
-    for (int i = 0; i < (int)MenuItem::MENU_COUNT && i < 5; i++) {
-        MenuItem item = (MenuItem)i;
+    // Calculate scroll offset to keep selected item visible
+    int selected = (int)_selectedItem;
+    int startIdx = 0;
+    if (selected >= maxVisible - 1) {
+        startIdx = selected - (maxVisible - 2);  // Keep selection near middle
+    }
+    if (startIdx > totalItems - maxVisible) {
+        startIdx = totalItems - maxVisible;
+    }
+    if (startIdx < 0) startIdx = 0;
+
+    for (int i = 0; i < maxVisible && (startIdx + i) < totalItems; i++) {
+        MenuItem item = (MenuItem)(startIdx + i);
         int y = startY + i * lineHeight;
 
         // Highlight selected item
@@ -453,7 +474,7 @@ inline void DisplayManager::drawMenu() {
 
         _display->drawStr(8, y, getMenuItemName(item));
 
-        // Show current value
+        // Show current value for editable items
         char val[16] = "";
         switch (item) {
             case MenuItem::MODE:
@@ -475,6 +496,14 @@ inline void DisplayManager::drawMenu() {
                 break;
         }
         _display->drawStr(70, y, val);
+    }
+
+    // Scroll indicators
+    if (startIdx > 0) {
+        _display->drawStr(120, startY, "^");  // More items above
+    }
+    if (startIdx + maxVisible < totalItems) {
+        _display->drawStr(120, startY + (maxVisible - 1) * lineHeight, "v");  // More items below
     }
 }
 
