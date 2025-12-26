@@ -9,22 +9,30 @@
 // =============================================================================
 // LORAWAN CREDENTIALS GENERATOR
 // =============================================================================
-// Generates unique LoRaWAN credentials based on ESP32's unique MAC address.
-// This allows each device to have its own keys without manual configuration.
+// Supports two modes:
+// 1. Manual mode (USE_MANUAL_CREDENTIALS=true): Uses credentials from config.h
+// 2. Auto mode (USE_MANUAL_CREDENTIALS=false): Generates from ESP32 MAC address
 //
-// DevEUI:  Derived from WiFi MAC address (unique per chip)
-// AppEUI:  Fixed for the project (all devices share this)
-// AppKey:  SHA256 hash of MAC + secret seed (unique per chip)
+// Manual credentials are taken from Helium Console in MSB format.
+// Auto-generated credentials:
+//   DevEUI:  Derived from WiFi MAC address (unique per chip)
+//   AppEUI:  Fixed for the project (all devices share this)
+//   AppKey:  SHA256 hash of MAC + secret seed (unique per chip)
 
-// Secret seed for AppKey generation - change this for your project!
-// This adds security so that knowing the MAC doesn't reveal the AppKey
+// Secret seed for AppKey generation (only used in auto mode)
 #define APPKEY_SEED "LoRaWAN-Scanner-2024-Secret"
 
-// Fixed AppEUI for all devices in this project
-// You can change this to your own value
+// Fixed AppEUI for auto-generated credentials
 static const uint8_t FIXED_APPEUI[8] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
+
+// Manual credentials from config.h (MSB format)
+#if USE_MANUAL_CREDENTIALS
+static const uint8_t MANUAL_DEV_EUI_ARRAY[8] = MANUAL_DEV_EUI;
+static const uint8_t MANUAL_JOIN_EUI_ARRAY[8] = MANUAL_JOIN_EUI;
+static const uint8_t MANUAL_APP_KEY_ARRAY[16] = MANUAL_APP_KEY;
+#endif
 
 // =============================================================================
 // CREDENTIALS STRUCTURE
@@ -86,6 +94,27 @@ bool CredentialsGenerator::_generated = false;
 // =============================================================================
 
 inline void CredentialsGenerator::generate(LoRaWANCredentials& creds) {
+#if USE_MANUAL_CREDENTIALS
+    // Use manually configured credentials from config.h
+    DEBUG_PRINTLN("[CRED] Using MANUAL credentials from config.h");
+
+    // Copy DevEUI (MSB from config -> LSB for RadioLib)
+    for (int i = 0; i < 8; i++) {
+        _creds.devEui[i] = MANUAL_DEV_EUI_ARRAY[7 - i];
+    }
+
+    // Copy JoinEUI/AppEUI (MSB from config -> LSB for RadioLib)
+    for (int i = 0; i < 8; i++) {
+        _creds.appEui[i] = MANUAL_JOIN_EUI_ARRAY[7 - i];
+    }
+
+    // Copy AppKey (MSB, stays the same)
+    memcpy(_creds.appKey, MANUAL_APP_KEY_ARRAY, 16);
+
+#else
+    // Auto-generate credentials from ESP32 MAC
+    DEBUG_PRINTLN("[CRED] Using AUTO-GENERATED credentials from MAC");
+
     uint8_t mac[6];
     getMacAddress(mac);
 
@@ -102,6 +131,7 @@ inline void CredentialsGenerator::generate(LoRaWANCredentials& creds) {
 
     // Generate AppKey from MAC + seed
     generateAppKey(mac);
+#endif
 
     // Format string representations
     formatStrings();
@@ -110,7 +140,7 @@ inline void CredentialsGenerator::generate(LoRaWANCredentials& creds) {
     memcpy(&creds, &_creds, sizeof(LoRaWANCredentials));
     _generated = true;
 
-    DEBUG_PRINTLN("[CRED] Credentials generated:");
+    DEBUG_PRINTLN("[CRED] Credentials ready:");
     DEBUG_PRINTF("[CRED] DevEUI: %s\n", _creds.devEuiStr);
     DEBUG_PRINTF("[CRED] AppEUI: %s\n", _creds.appEuiStr);
     DEBUG_PRINTF("[CRED] AppKey: %s\n", _creds.appKeyStr);

@@ -135,6 +135,9 @@ enum class OperationMode : uint8_t {
 #define DEBUG_SERIAL            Serial
 #define DEBUG_BAUD              115200
 
+// GPS Debug - print raw NMEA sentences to serial (for debugging GPS module)
+#define GPS_DEBUG_OUTPUT        false   // Set to true to enable GPS debug
+
 #ifdef CORE_DEBUG_LEVEL
     #if CORE_DEBUG_LEVEL >= 3
         #define DEBUG_PRINT(x)      DEBUG_SERIAL.print(x)
@@ -150,5 +153,24 @@ enum class OperationMode : uint8_t {
     #define DEBUG_PRINTLN(x)
     #define DEBUG_PRINTF(...)
 #endif
+
+// =============================================================================
+// LORAWAN CREDENTIALS CONFIGURATION
+// =============================================================================
+// Set to true to use manually configured credentials from Helium Console
+// Set to false to auto-generate credentials from ESP32 MAC address
+#define USE_MANUAL_CREDENTIALS  true
+
+// Manual credentials from Helium Console (MSB format)
+// These are used only when USE_MANUAL_CREDENTIALS is true
+//
+// IMPORTANT: Use MSB (Most Significant Byte first) format from Helium Console
+// MSB is the standard network byte order used by LoRaWAN
+//
+// Format: 0xXX, 0xXX, ... (MSB first, as shown in console)
+#define MANUAL_DEV_EUI    { 0x87, 0x54, 0x45, 0xc6, 0xe4, 0xc3, 0x72, 0xec }
+#define MANUAL_JOIN_EUI   { 0xf3, 0x9f, 0x38, 0xf6, 0x96, 0xf3, 0xb0, 0xc9 }
+#define MANUAL_APP_KEY    { 0x98, 0xe6, 0xfe, 0xa6, 0x5f, 0x47, 0x22, 0x27, \
+                            0x5d, 0x79, 0x82, 0xd7, 0xa7, 0x0b, 0x2a, 0xda }
 
 #endif // CONFIG_H

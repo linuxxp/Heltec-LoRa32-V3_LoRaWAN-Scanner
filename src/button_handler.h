@@ -16,9 +16,35 @@ enum class ButtonEvent : uint8_t {
 };
 
 // =============================================================================
-// INTERRUPT-BASED BUTTON HANDLER
-// Uses hardware interrupts to capture button state changes even during
-// blocking operations (like software I2C display updates)
+// ISR-SAFE STATIC VARIABLES (must be in DRAM for IRAM access)
+// =============================================================================
+static volatile DRAM_ATTR bool _btnIsrPressed = false;
+static volatile DRAM_ATTR uint32_t _btnIsrPressTime = 0;
+static volatile DRAM_ATTR uint32_t _btnIsrReleaseTime = 0;
+static volatile DRAM_ATTR bool _btnIsrPressEvent = false;
+static volatile DRAM_ATTR bool _btnIsrReleaseEvent = false;
+static volatile DRAM_ATTR uint8_t _btnIsrPin = 0;
+
+// =============================================================================
+// ISR HANDLER (in IRAM, accesses only DRAM static variables)
+// =============================================================================
+static void IRAM_ATTR buttonISR() {
+    uint32_t now = millis();
+    bool pressed = !digitalRead(_btnIsrPin);  // Active low
+
+    if (pressed) {
+        _btnIsrPressTime = now;
+        _btnIsrPressEvent = true;
+        _btnIsrPressed = true;
+    } else {
+        _btnIsrReleaseTime = now;
+        _btnIsrReleaseEvent = true;
+        _btnIsrPressed = false;
+    }
+}
+
+// =============================================================================
+// BUTTON HANDLER CLASS
 // =============================================================================
 class ButtonHandler {
 public:
@@ -30,10 +56,6 @@ public:
     // Callback support
     using EventCallback = void (*)(ButtonEvent);
     void setCallback(EventCallback cb) { _callback = cb; }
-
-    // ISR needs access to these
-    static void IRAM_ATTR buttonISR();
-    static ButtonHandler* _instance;
 
 private:
     uint8_t _pin;
@@ -55,55 +77,24 @@ private:
 
     EventCallback _callback = nullptr;
 
-    // Interrupt-captured state (volatile for ISR safety)
-    volatile bool _isrPressed = false;
-    volatile uint32_t _isrPressTime = 0;
-    volatile uint32_t _isrReleaseTime = 0;
-    volatile bool _isrPressEvent = false;
-    volatile bool _isrReleaseEvent = false;
-
-    // Debounce in software
+    // Debounce
     uint32_t _lastDebounceTime = 0;
-    bool _lastReading = true;  // HIGH = not pressed (pull-up)
-    bool _debouncedState = true;
 
     void emitEvent(ButtonEvent event);
 };
-
-// Static instance pointer for ISR
-ButtonHandler* ButtonHandler::_instance = nullptr;
 
 // =============================================================================
 // IMPLEMENTATION
 // =============================================================================
 
-inline void IRAM_ATTR ButtonHandler::buttonISR() {
-    if (_instance == nullptr) return;
-
-    uint32_t now = millis();
-    bool pressed = !digitalRead(_instance->_pin);  // Active low
-
-    if (pressed) {
-        _instance->_isrPressTime = now;
-        _instance->_isrPressEvent = true;
-        _instance->_isrPressed = true;
-    } else {
-        _instance->_isrReleaseTime = now;
-        _instance->_isrReleaseEvent = true;
-        _instance->_isrPressed = false;
-    }
-}
-
 inline void ButtonHandler::begin(uint8_t pin) {
     _pin = pin;
-    _instance = this;
+    _btnIsrPin = pin;  // Store in static for ISR access
 
     pinMode(pin, INPUT_PULLUP);
 
     // Read initial state
-    _debouncedState = digitalRead(pin);
-    _lastReading = _debouncedState;
-    _isrPressed = !_debouncedState;
+    _btnIsrPressed = !digitalRead(pin);
 
     // Attach interrupt on both edges
     attachInterrupt(digitalPinToInterrupt(pin), buttonISR, CHANGE);
@@ -115,20 +106,20 @@ inline void ButtonHandler::update() {
     uint32_t now = millis();
 
     // Process ISR-captured press event
-    if (_isrPressEvent) {
-        _isrPressEvent = false;
+    if (_btnIsrPressEvent) {
+        _btnIsrPressEvent = false;
 
         // Debounce check
         if ((now - _lastDebounceTime) >= BTN_DEBOUNCE_MS) {
             _lastDebounceTime = now;
-            _pressTime = _isrPressTime;
+            _pressTime = _btnIsrPressTime;
 
             if (_state == State::IDLE) {
                 _state = State::PRESSED;
                 DEBUG_PRINTLN("[BTN] Press detected");
             } else if (_state == State::WAIT_DOUBLE) {
                 // Second press for double click
-                _pressTime = _isrPressTime;
+                _pressTime = _btnIsrPressTime;
                 _clickCount = 2;
                 _state = State::PRESSED;
             }
@@ -136,13 +127,13 @@ inline void ButtonHandler::update() {
     }
 
     // Process ISR-captured release event
-    if (_isrReleaseEvent) {
-        _isrReleaseEvent = false;
+    if (_btnIsrReleaseEvent) {
+        _btnIsrReleaseEvent = false;
 
         // Debounce check
         if ((now - _lastDebounceTime) >= BTN_DEBOUNCE_MS) {
             _lastDebounceTime = now;
-            _releaseTime = _isrReleaseTime;
+            _releaseTime = _btnIsrReleaseTime;
 
             if (_state == State::PRESSED) {
                 uint32_t pressDuration = _releaseTime - _pressTime;
@@ -178,7 +169,7 @@ inline void ButtonHandler::update() {
 
         case State::PRESSED:
             // Check for long/very long press while still holding
-            if (_isrPressed) {
+            if (_btnIsrPressed) {
                 uint32_t holdTime = now - _pressTime;
                 if (holdTime >= BTN_VERY_LONG_PRESS_MS) {
                     emitEvent(ButtonEvent::VERY_LONG_PRESS);
@@ -212,7 +203,7 @@ inline ButtonEvent ButtonHandler::getEvent() {
 }
 
 inline bool ButtonHandler::isPressed() {
-    return _isrPressed;
+    return _btnIsrPressed;
 }
 
 inline void ButtonHandler::emitEvent(ButtonEvent event) {
@@ -222,12 +213,11 @@ inline void ButtonHandler::emitEvent(ButtonEvent event) {
         _callback(event);
     }
 
-    #ifdef CORE_DEBUG_LEVEL
-    #if CORE_DEBUG_LEVEL >= 3
-    const char* eventNames[] = {"NONE", "SINGLE", "DOUBLE", "LONG", "VERY_LONG"};
-    DEBUG_PRINTF("[BTN] Event: %s\n", eventNames[(int)event]);
-    #endif
-    #endif
+    DEBUG_PRINTF("[BTN] Event: %s\n",
+        event == ButtonEvent::SINGLE_CLICK ? "SINGLE" :
+        event == ButtonEvent::DOUBLE_CLICK ? "DOUBLE" :
+        event == ButtonEvent::LONG_PRESS ? "LONG" :
+        event == ButtonEvent::VERY_LONG_PRESS ? "VERY_LONG" : "NONE");
 }
 
 #endif // BUTTON_HANDLER_H

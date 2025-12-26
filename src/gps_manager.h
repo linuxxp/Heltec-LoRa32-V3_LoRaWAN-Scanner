@@ -78,6 +78,12 @@ inline void GPSManager::update() {
     // Read all available data
     while (_serial->available() > 0) {
         char c = _serial->read();
+
+        // Debug: print raw GPS data to serial
+        #if GPS_DEBUG_OUTPUT
+        DEBUG_SERIAL.write(c);
+        #endif
+
         if (_gps.encode(c)) {
             updateData();
         }
