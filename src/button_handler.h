@@ -5,14 +5,13 @@
 #include "config.h"
 
 // =============================================================================
-// BUTTON EVENTS
+// BUTTON EVENTS (simplified - no double click)
 // =============================================================================
 enum class ButtonEvent : uint8_t {
     NONE            = 0,
-    SINGLE_CLICK    = 1,
-    DOUBLE_CLICK    = 2,
-    LONG_PRESS      = 3,
-    VERY_LONG_PRESS = 4
+    SINGLE_CLICK    = 1,    // Short press < 2 sec (immediate on release)
+    LONG_PRESS      = 2,    // Hold >= 2 sec (emitted while holding)
+    VERY_LONG_PRESS = 3     // Hold >= 5 sec (emitted while holding)
 };
 
 // =============================================================================
@@ -26,8 +25,8 @@ static volatile DRAM_ATTR bool _btnIsrReleaseEvent = false;
 static volatile DRAM_ATTR uint8_t _btnIsrPin = 0;
 static volatile DRAM_ATTR uint32_t _btnIsrLastChange = 0;
 
-// Hardware debounce threshold in ISR (microseconds equivalent via millis)
-#define ISR_DEBOUNCE_MS 20
+// Hardware debounce threshold in ISR
+#define ISR_DEBOUNCE_MS 30
 
 // =============================================================================
 // ISR HANDLER (in IRAM, accesses only DRAM static variables)
@@ -71,20 +70,17 @@ public:
 private:
     uint8_t _pin;
 
-    // State machine
+    // Simplified state machine (no double-click)
     enum class State {
         IDLE,
         PRESSED,
-        WAIT_DOUBLE,
-        LONG_PRESSING
+        LONG_FIRED,      // Long press already fired, waiting for release
+        VERY_LONG_FIRED  // Very long press already fired, waiting for release
     };
 
     State _state = State::IDLE;
     ButtonEvent _pendingEvent = ButtonEvent::NONE;
-
     uint32_t _pressTime = 0;
-    uint32_t _releaseTime = 0;
-    uint8_t _clickCount = 0;
 
     EventCallback _callback = nullptr;
 
@@ -107,17 +103,16 @@ inline void ButtonHandler::begin(uint8_t pin) {
     // Attach interrupt on both edges
     attachInterrupt(digitalPinToInterrupt(pin), buttonISR, CHANGE);
 
-    DEBUG_PRINTF("[BTN] Initialized with interrupt on GPIO%d\n", pin);
+    DEBUG_PRINTF("[BTN] Initialized on GPIO%d (no double-click)\n", pin);
 }
 
 inline void ButtonHandler::update() {
     uint32_t now = millis();
 
-    // Safety: Reset stuck state machine (if in non-IDLE state for too long without button pressed)
-    if (_state != State::IDLE && !_btnIsrPressed && (now - _pressTime) > 5000) {
+    // Safety: Reset stuck state machine
+    if (_state != State::IDLE && !_btnIsrPressed && (now - _pressTime) > 10000) {
         DEBUG_PRINTLN("[BTN] State machine reset (timeout)");
         _state = State::IDLE;
-        _clickCount = 0;
     }
 
     // Process ISR-captured press event
@@ -128,78 +123,32 @@ inline void ButtonHandler::update() {
         if (_state == State::IDLE) {
             _state = State::PRESSED;
             DEBUG_PRINTLN("[BTN] Press detected");
-        } else if (_state == State::WAIT_DOUBLE) {
-            // Second press for double click
-            _clickCount = 2;
-            _state = State::PRESSED;
         }
     }
 
     // Process ISR-captured release event
     if (_btnIsrReleaseEvent) {
         _btnIsrReleaseEvent = false;
-        _releaseTime = _btnIsrReleaseTime;
 
         if (_state == State::PRESSED) {
-            uint32_t pressDuration = _releaseTime - _pressTime;
-
-            if (pressDuration >= BTN_VERY_LONG_PRESS_MS) {
-                emitEvent(ButtonEvent::VERY_LONG_PRESS);
-                _state = State::IDLE;
-                _clickCount = 0;
-            } else if (pressDuration >= BTN_LONG_PRESS_MS) {
-                emitEvent(ButtonEvent::LONG_PRESS);
-                _state = State::IDLE;
-                _clickCount = 0;
-            } else {
-                // Short press - wait for possible double click
-                if (_clickCount == 2) {
-                    // This was the second press of a double-click
-                    emitEvent(ButtonEvent::DOUBLE_CLICK);
-                    _clickCount = 0;
-                    _state = State::IDLE;
-                } else {
-                    _clickCount = 1;
-                    _state = State::WAIT_DOUBLE;
-                }
-            }
-        } else if (_state == State::LONG_PRESSING) {
-            _state = State::IDLE;
-            _clickCount = 0;
+            // Short press - emit single click immediately (no waiting!)
+            emitEvent(ButtonEvent::SINGLE_CLICK);
         }
+        // If LONG_FIRED or VERY_LONG_FIRED, the event was already emitted
+        _state = State::IDLE;
     }
 
-    // Time-based state transitions
-    switch (_state) {
-        case State::IDLE:
-            break;
+    // Check for long/very long press while still holding
+    if (_state == State::PRESSED && _btnIsrPressed) {
+        uint32_t holdTime = now - _pressTime;
 
-        case State::PRESSED:
-            // Check for long/very long press while still holding
-            if (_btnIsrPressed) {
-                uint32_t holdTime = now - _pressTime;
-                if (holdTime >= BTN_VERY_LONG_PRESS_MS) {
-                    emitEvent(ButtonEvent::VERY_LONG_PRESS);
-                    _state = State::LONG_PRESSING;
-                } else if (holdTime >= BTN_LONG_PRESS_MS) {
-                    emitEvent(ButtonEvent::LONG_PRESS);
-                    _state = State::LONG_PRESSING;
-                }
-            }
-            break;
-
-        case State::WAIT_DOUBLE:
-            // Timeout waiting for double click
-            if ((now - _releaseTime) > BTN_DOUBLE_CLICK_MS) {
-                emitEvent(ButtonEvent::SINGLE_CLICK);
-                _clickCount = 0;
-                _state = State::IDLE;
-            }
-            break;
-
-        case State::LONG_PRESSING:
-            // Waiting for release (handled in ISR release processing)
-            break;
+        if (holdTime >= BTN_VERY_LONG_PRESS_MS) {
+            emitEvent(ButtonEvent::VERY_LONG_PRESS);
+            _state = State::VERY_LONG_FIRED;
+        } else if (holdTime >= BTN_LONG_PRESS_MS) {
+            emitEvent(ButtonEvent::LONG_PRESS);
+            _state = State::LONG_FIRED;
+        }
     }
 }
 
@@ -222,7 +171,6 @@ inline void ButtonHandler::emitEvent(ButtonEvent event) {
 
     DEBUG_PRINTF("[BTN] Event: %s\n",
         event == ButtonEvent::SINGLE_CLICK ? "SINGLE" :
-        event == ButtonEvent::DOUBLE_CLICK ? "DOUBLE" :
         event == ButtonEvent::LONG_PRESS ? "LONG" :
         event == ButtonEvent::VERY_LONG_PRESS ? "VERY_LONG" : "NONE");
 }

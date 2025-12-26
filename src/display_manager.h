@@ -87,6 +87,9 @@ public:
     void setQRContent(const String& content) { _qrContent = content; }
     void showQRScreen() { _state = UIState::SCREEN_QR; resetActivityTimer(); }
 
+    // Notification overlay (shows message for a few seconds)
+    void showNotification(const char* msg, uint16_t durationMs = 2000);
+
 private:
     U8G2_SSD1306_128X64_NONAME_F_SW_I2C* _display = nullptr;
 
@@ -119,6 +122,10 @@ private:
     // QR Code content
     String _qrContent;
 
+    // Notification overlay
+    char _notifyMsg[32] = "";
+    uint32_t _notifyExpire = 0;
+
     // Drawing functions
     void drawStatusScreen();
     void drawGPSScreen();
@@ -132,6 +139,7 @@ private:
     void drawHeader(const char* title);
     void drawBattery(int x, int y);
     void drawProgressBar(int x, int y, int w, int h, int percent);
+    void drawNotification();
     const char* getModeString(OperationMode mode);
     const char* getMenuItemName(MenuItem item);
 };
@@ -214,6 +222,9 @@ inline void DisplayManager::update() {
             drawEditValue();
             break;
     }
+
+    // Draw notification overlay if active
+    drawNotification();
 
     _display->sendBuffer();
 }
@@ -615,6 +626,41 @@ inline void DisplayManager::drawQRScreen() {
             }
         }
     }
+}
+
+inline void DisplayManager::showNotification(const char* msg, uint16_t durationMs) {
+    strncpy(_notifyMsg, msg, sizeof(_notifyMsg) - 1);
+    _notifyMsg[sizeof(_notifyMsg) - 1] = '\0';
+    _notifyExpire = millis() + durationMs;
+    resetActivityTimer();
+}
+
+inline void DisplayManager::drawNotification() {
+    if (_notifyExpire == 0 || millis() > _notifyExpire) {
+        _notifyMsg[0] = '\0';
+        _notifyExpire = 0;
+        return;
+    }
+
+    // Draw centered notification box
+    int textWidth = strlen(_notifyMsg) * 6;  // Approximate width
+    int boxW = textWidth + 20;
+    int boxH = 24;
+    int boxX = (128 - boxW) / 2;
+    int boxY = (64 - boxH) / 2;
+
+    // White box with black border
+    _display->setDrawColor(0);
+    _display->drawBox(boxX, boxY, boxW, boxH);
+    _display->setDrawColor(1);
+    _display->drawFrame(boxX, boxY, boxW, boxH);
+    _display->drawFrame(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+
+    // Text centered in box
+    _display->setFont(u8g2_font_6x10_tf);
+    int textX = boxX + (boxW - textWidth) / 2;
+    int textY = boxY + boxH / 2 + 4;
+    _display->drawStr(textX, textY, _notifyMsg);
 }
 
 #endif // DISPLAY_MANAGER_H

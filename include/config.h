@@ -80,29 +80,27 @@ enum class OperationMode : uint8_t {
 //
 // BUTTON ACTIONS:
 // ---------------
+// SIMPLIFIED BUTTON CONTROLS (no double-click for instant response):
+//
 // On Main Screens (Status, GPS, Network, Info, QR):
-//   - Single click:    Next screen
-//   - Double click:    Trigger measurement (send GPS via LoRaWAN)
+//   - Short press:     Next screen
 //   - Long press:      Enter settings menu
-//   - Very long press: Force TX (debug)
+//   - Very long press: Force TX (shows "TX Sent!" on screen)
 //
 // In Settings Menu:
-//   - Single click:    Next menu item
-//   - Double click:    Select/edit item
-//   - Long press:      Exit menu and save
+//   - Short press:     Next menu item
+//   - Long press:      Select/edit item OR exit menu (save)
 //
 // In Edit Mode:
-//   - Single click:    Change value
-//   - Double click:    Confirm and exit edit
+//   - Short press:     Change value
 //   - Long press:      Confirm and exit edit
 //
 // When Display is Off:
 //   - Any press:       Wake display
 //
 #define BTN_DEBOUNCE_MS         50
-#define BTN_DOUBLE_CLICK_MS     1000    // Max time between clicks for double-click
-#define BTN_LONG_PRESS_MS       1000    // 1 second for long press
-#define BTN_VERY_LONG_PRESS_MS  3000    // 3 seconds for very long press
+#define BTN_LONG_PRESS_MS       2000    // 2 seconds for long press
+#define BTN_VERY_LONG_PRESS_MS  5000    // 5 seconds for Force TX
 
 // =============================================================================
 // DISPLAY CONFIGURATION

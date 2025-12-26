@@ -237,20 +237,16 @@ void handleScreenNavigation(ButtonEvent event) {
             display.nextScreen();
             break;
 
-        case ButtonEvent::DOUBLE_CLICK:
-            // Trigger measurement (in MANUAL mode or as quick action)
-            triggerMeasurement();
-            break;
-
         case ButtonEvent::LONG_PRESS:
             // Enter menu
             display.enterMenu();
             break;
 
         case ButtonEvent::VERY_LONG_PRESS:
-            // Force LoRa TX (debug)
+            // Force LoRa TX
             DEBUG_PRINTLN("[BTN] Force TX triggered");
             state.pendingTx = true;
+            display.showNotification("TX Sent!", 2000);
             break;
 
         default:
@@ -265,35 +261,42 @@ void handleMenuNavigation(ButtonEvent event) {
             display.menuNext();
             break;
 
-        case ButtonEvent::DOUBLE_CLICK:
-            // Select/enter edit mode
+        case ButtonEvent::LONG_PRESS:
+            // Select item or execute action
             {
                 MenuItem item = display.getSelectedItem();
 
                 if (item == MenuItem::FORCE_JOIN) {
                     // Force rejoin
                     DEBUG_PRINTLN("[MENU] Force rejoin");
+                    display.showNotification("Joining...", 2000);
                     lora.join(true);
                     state.loraJoined = lora.isJoined();
                     display.setJoined(state.loraJoined);
+                    if (state.loraJoined) {
+                        display.showNotification("Joined!", 1500);
+                    } else {
+                        display.showNotification("Join Failed", 1500);
+                    }
                 } else if (item == MenuItem::SHOW_QR) {
                     // Show QR code screen
                     DEBUG_PRINTLN("[MENU] Show QR code");
                     display.showQRScreen();
                 } else if (item == MenuItem::ABOUT) {
-                    // Show info screen
+                    // Show info screen and exit menu
                     display.setState(UIState::SCREEN_INFO);
                 } else {
-                    // Enter edit mode
+                    // Enter edit mode for settings
                     display.menuSelect();
                 }
             }
             break;
 
-        case ButtonEvent::LONG_PRESS:
-            // Exit menu
+        case ButtonEvent::VERY_LONG_PRESS:
+            // Exit menu and save
             display.exitMenu();
             saveSettings();
+            display.showNotification("Saved!", 1000);
             break;
 
         default:
@@ -352,7 +355,6 @@ void handleValueEdit(ButtonEvent event) {
             }
             break;
 
-        case ButtonEvent::DOUBLE_CLICK:
         case ButtonEvent::LONG_PRESS:
             // Confirm and exit edit mode
             display.menuSelect();
