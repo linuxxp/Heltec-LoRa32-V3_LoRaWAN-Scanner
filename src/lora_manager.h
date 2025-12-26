@@ -143,27 +143,29 @@ inline bool LoRaManager::join(bool force) {
     _state = LoRaState::JOINING;
 
     // Get credentials from generator
-    const uint8_t* appEui = CredentialsGenerator::getAppEui();
-    const uint8_t* devEui = CredentialsGenerator::getDevEui();
-    const uint8_t* appKey = CredentialsGenerator::getAppKey();
+    const LoRaWANCredentials& creds = CredentialsGenerator::getCredentials();
+
+    // Convert byte arrays to uint64_t (RadioLib expects this format)
+    // EUIs are stored LSB first, need to convert to uint64_t
+    uint64_t joinEUI = 0;
+    uint64_t devEUI = 0;
+    for (int i = 0; i < 8; i++) {
+        joinEUI |= ((uint64_t)creds.appEui[i]) << (i * 8);
+        devEUI |= ((uint64_t)creds.devEui[i]) << (i * 8);
+    }
 
     DEBUG_PRINTF("[LORA] DevEUI: %s\n", CredentialsGenerator::getDevEuiStr());
+    DEBUG_PRINTF("[LORA] AppEUI: %s\n", CredentialsGenerator::getAppEuiStr());
 
     // Begin OTAA join
-    int16_t state = _node->beginOTAA(appEui, devEui, appKey);
-
-    if (state != RADIOLIB_ERR_NONE) {
-        DEBUG_PRINTF("[LORA] Begin OTAA failed: %d\n", state);
-        _lastError = state;
-        _state = LoRaState::ERROR;
-        return false;
-    }
+    // For LoRaWAN 1.0.x, nwkKey and appKey are the same
+    _node->beginOTAA(joinEUI, devEUI, (uint8_t*)creds.appKey, (uint8_t*)creds.appKey);
 
     // Attempt to join (blocking, with timeout)
     DEBUG_PRINTLN("[LORA] Sending join request...");
 
     // Try to activate - this sends join request and waits for accept
-    state = _node->activateOTAA();
+    int16_t state = _node->activateOTAA();
 
     if (state == RADIOLIB_ERR_NONE) {
         DEBUG_PRINTLN("[LORA] Join successful!");
