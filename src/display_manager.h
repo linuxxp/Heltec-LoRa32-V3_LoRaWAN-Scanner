@@ -37,6 +37,7 @@ enum class MenuItem : uint8_t {
     FORCE_JOIN,
     SHOW_QR,
     ABOUT,
+    EXIT,           // Exit menu and save
     MENU_COUNT
 };
 
@@ -293,8 +294,12 @@ inline void DisplayManager::menuNext() {
 
 inline void DisplayManager::menuSelect() {
     if (_state == UIState::MENU_MAIN) {
-        if (_selectedItem == MenuItem::FORCE_JOIN || _selectedItem == MenuItem::ABOUT) {
-            // Action items - handled in main
+        // Action items (handled in main, don't enter edit mode)
+        if (_selectedItem == MenuItem::FORCE_JOIN ||
+            _selectedItem == MenuItem::ABOUT ||
+            _selectedItem == MenuItem::SHOW_QR ||
+            _selectedItem == MenuItem::EXIT) {
+            // These are handled in main.cpp
         } else {
             _state = UIState::MENU_EDIT;
             _editing = true;
@@ -309,6 +314,25 @@ inline void DisplayManager::menuSelect() {
 inline void DisplayManager::drawHeader(const char* title) {
     _display->setFont(u8g2_font_6x10_tf);
     _display->drawStr(0, 10, title);
+
+    // GPS status icon (position 58)
+    _display->setFont(u8g2_font_5x7_tf);
+    _display->drawStr(58, 7, "G");
+    if (_gps && _gps->hasValidFix()) {
+        _display->drawBox(65, 1, 5, 5);  // Filled = fix
+    } else {
+        _display->drawFrame(65, 1, 5, 5);  // Empty = no fix
+    }
+
+    // LoRa/Join status icon (position 74)
+    _display->drawStr(74, 7, "L");
+    if (_joined) {
+        _display->drawBox(81, 1, 5, 5);  // Filled = joined
+    } else {
+        _display->drawFrame(81, 1, 5, 5);  // Empty = not joined
+    }
+
+    _display->setFont(u8g2_font_6x10_tf);
     drawBattery(100, 0);
     _display->drawHLine(0, 13, 128);
 }
@@ -580,6 +604,7 @@ inline const char* DisplayManager::getMenuItemName(MenuItem item) {
         case MenuItem::FORCE_JOIN: return "Force Join";
         case MenuItem::SHOW_QR: return "Show QR";
         case MenuItem::ABOUT: return "About";
+        case MenuItem::EXIT: return "< Exit";
         default: return "?";
     }
 }

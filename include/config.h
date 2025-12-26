@@ -107,7 +107,7 @@ enum class OperationMode : uint8_t {
 // =============================================================================
 #define DISPLAY_WIDTH           128
 #define DISPLAY_HEIGHT          64
-#define DISPLAY_UPDATE_MS       250     // Refresh rate
+#define DISPLAY_UPDATE_MS       100     // Refresh rate (faster for responsive UI)
 #define DISPLAY_TIMEOUT_MS      300000  // Auto-off after 5 minutes (0=never)
 #define DISPLAY_CONTRAST        255     // 0-255
 

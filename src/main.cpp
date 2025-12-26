@@ -266,7 +266,12 @@ void handleMenuNavigation(ButtonEvent event) {
             {
                 MenuItem item = display.getSelectedItem();
 
-                if (item == MenuItem::FORCE_JOIN) {
+                if (item == MenuItem::EXIT) {
+                    // Exit menu and save
+                    display.exitMenu();
+                    saveSettings();
+                    display.showNotification("Saved!", 1000);
+                } else if (item == MenuItem::FORCE_JOIN) {
                     // Force rejoin - show notification immediately
                     DEBUG_PRINTLN("[MENU] Force rejoin");
                     display.showNotification("Joining...", 30000);  // Long timeout
