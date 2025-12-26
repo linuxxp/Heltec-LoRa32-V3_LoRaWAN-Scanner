@@ -18,16 +18,14 @@
 // Battery measurement interval (30 seconds as specified)
 #define BATTERY_MEASURE_INTERVAL_MS  30000
 
-// FET control logic (try HIGH to enable if LOW doesn't work)
-#define FET_ENABLE   HIGH
-#define FET_DISABLE  LOW
+// FET control logic: LOW = enable (connect divider), HIGH = disable
+#define FET_ENABLE   LOW
+#define FET_DISABLE  HIGH
 
 // ADC calibration for ESP32-S3 with 11dB attenuation
 // Theoretical: raw * (2600/4095) * 4.9 = raw * 3.11
-// But ESP32-S3 ADC needs calibration. Adjust this value based on actual measurements.
 // To calibrate: measure real battery voltage with multimeter, divide by RAW value
-// Example: if multimeter shows 4100mV and RAW=1020, then multiplier = 4100/1020 = 4.02
-#define ADC_MULTIPLIER  4.05f  // Increased from 3.11 based on typical ESP32-S3 behavior
+#define ADC_MULTIPLIER  3.11f
 
 class BatteryManager {
 public:

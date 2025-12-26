@@ -306,25 +306,12 @@ inline void DisplayManager::drawBattery(int x, int y) {
     if (!_battery) return;
 
     uint8_t pct = _battery->getPercent();
-    int w = 24;
-    int h = 10;
 
-    // Battery outline
-    _display->drawFrame(x, y, w, h);
-    _display->drawBox(x + w, y + 2, 2, h - 4);
-
-    // Fill level
-    int fill = (w - 4) * pct / 100;
-    if (fill > 0) {
-        _display->drawBox(x + 2, y + 2, fill, h - 4);
-    }
-
-    // Percentage text
+    // Just show percentage text (no icon fill - easier to read)
     char buf[5];
     snprintf(buf, sizeof(buf), "%d%%", pct);
-    _display->setFont(u8g2_font_5x7_tf);
-    _display->drawStr(x + 5, y + 8, buf);
     _display->setFont(u8g2_font_6x10_tf);
+    _display->drawStr(x, y + 10, buf);
 }
 
 inline void DisplayManager::drawStatusScreen() {
