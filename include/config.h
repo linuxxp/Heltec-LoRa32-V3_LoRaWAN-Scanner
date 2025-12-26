@@ -100,7 +100,7 @@ enum class OperationMode : uint8_t {
 //   - Any press:       Wake display
 //
 #define BTN_DEBOUNCE_MS         50
-#define BTN_DOUBLE_CLICK_MS     300     // Max time between clicks for double-click
+#define BTN_DOUBLE_CLICK_MS     500     // Max time between clicks for double-click
 #define BTN_LONG_PRESS_MS       1000    // 1 second for long press
 #define BTN_VERY_LONG_PRESS_MS  3000    // 3 seconds for very long press
 
@@ -161,21 +161,10 @@ enum class OperationMode : uint8_t {
 // GPS Debug - print raw NMEA sentences to serial (for debugging GPS module)
 #define GPS_DEBUG_OUTPUT        false   // Set to true to enable GPS debug
 
-#ifdef CORE_DEBUG_LEVEL
-    #if CORE_DEBUG_LEVEL >= 3
-        #define DEBUG_PRINT(x)      DEBUG_SERIAL.print(x)
-        #define DEBUG_PRINTLN(x)    DEBUG_SERIAL.println(x)
-        #define DEBUG_PRINTF(...)   DEBUG_SERIAL.printf(__VA_ARGS__)
-    #else
-        #define DEBUG_PRINT(x)
-        #define DEBUG_PRINTLN(x)
-        #define DEBUG_PRINTF(...)
-    #endif
-#else
-    #define DEBUG_PRINT(x)
-    #define DEBUG_PRINTLN(x)
-    #define DEBUG_PRINTF(...)
-#endif
+// Always enable debug output
+#define DEBUG_PRINT(x)      DEBUG_SERIAL.print(x)
+#define DEBUG_PRINTLN(x)    DEBUG_SERIAL.println(x)
+#define DEBUG_PRINTF(...)   DEBUG_SERIAL.printf(__VA_ARGS__)
 
 // =============================================================================
 // LORAWAN CREDENTIALS CONFIGURATION

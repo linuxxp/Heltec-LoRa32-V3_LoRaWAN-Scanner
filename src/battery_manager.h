@@ -23,9 +23,8 @@
 #define FET_DISABLE  HIGH
 
 // ADC calibration for ESP32-S3 with 11dB attenuation
-// Theoretical: raw * (2600/4095) * 4.9 = raw * 3.11
-// To calibrate: measure real battery voltage with multimeter, divide by RAW value
-#define ADC_MULTIPLIER  3.11f
+// Calibrated: measured 4184mV, showed 2935mV, so multiplier = 4184/944 = 4.43
+#define ADC_MULTIPLIER  4.43f
 
 class BatteryManager {
 public:

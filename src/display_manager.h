@@ -306,19 +306,18 @@ inline void DisplayManager::drawBattery(int x, int y) {
     if (!_battery) return;
 
     uint8_t pct = _battery->getPercent();
-    int w = 20;
-    int h = 10;
 
     // Battery outline only (no fill)
+    int w = 18;
+    int h = 9;
     _display->drawFrame(x, y, w, h);
-    _display->drawBox(x + w, y + 3, 2, h - 6);  // Battery tip
+    _display->drawBox(x + w, y + 2, 2, h - 4);  // Battery tip
 
-    // Percentage text inside (centered)
+    // Percentage text with % sign (to the right of icon)
     char buf[5];
-    snprintf(buf, sizeof(buf), "%d", pct);
+    snprintf(buf, sizeof(buf), "%d%%", pct);
     _display->setFont(u8g2_font_5x7_tf);
-    int textWidth = _display->getStrWidth(buf);
-    _display->drawStr(x + (w - textWidth) / 2, y + 8, buf);
+    _display->drawStr(x - 22, y + 7, buf);  // Left of battery icon
     _display->setFont(u8g2_font_6x10_tf);
 }
 
