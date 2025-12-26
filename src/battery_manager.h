@@ -23,10 +23,11 @@
 #define FET_DISABLE  LOW
 
 // ADC calibration for ESP32-S3 with 11dB attenuation
-// Reference voltage ~2600mV at 4095 counts
-// Divider ratio = 4.9
-// So: VBAT = (raw / 4095) * 2600 * 4.9 = raw * 3.11
-#define ADC_MULTIPLIER  3.11f
+// Theoretical: raw * (2600/4095) * 4.9 = raw * 3.11
+// But ESP32-S3 ADC needs calibration. Adjust this value based on actual measurements.
+// To calibrate: measure real battery voltage with multimeter, divide by RAW value
+// Example: if multimeter shows 4100mV and RAW=1020, then multiplier = 4100/1020 = 4.02
+#define ADC_MULTIPLIER  4.05f  // Increased from 3.11 based on typical ESP32-S3 behavior
 
 class BatteryManager {
 public:
@@ -128,8 +129,10 @@ inline uint16_t BatteryManager::measureVoltage() {
     float voltage = raw * ADC_MULTIPLIER;
 
     // Debug output with raw value for calibration
-    DEBUG_PRINTF("[BAT] RAW=%lu (FET=%s), Voltage=%.0fmV\n",
-        raw, FET_ENABLE == HIGH ? "HIGH" : "LOW", voltage);
+    // To calibrate: real_voltage_mV / RAW = correct multiplier
+    DEBUG_PRINTF("[BAT] RAW=%lu, Calc=%.0fmV (multiplier=%.2f)\n",
+        raw, voltage, ADC_MULTIPLIER);
+    DEBUG_PRINTF("[BAT] To calibrate: measure with multimeter, new_multiplier = real_mV / %lu\n", raw);
 
     // If still getting 0, try reading with opposite FET state for debug
     if (raw < 50) {
