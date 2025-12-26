@@ -455,6 +455,8 @@ void checkAutoTrigger() {
 // HELPER FUNCTIONS
 // =============================================================================
 void updateDisplayData() {
+    // Sync joined status from LoRa manager (authoritative source)
+    state.loraJoined = lora.isJoined();
     display.setJoined(state.loraJoined);
     display.setTxCount(state.txCount);
     display.setTxFailed(state.txFailed);

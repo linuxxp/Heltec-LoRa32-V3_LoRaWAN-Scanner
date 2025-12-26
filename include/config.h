@@ -76,10 +76,33 @@ enum class OperationMode : uint8_t {
 // =============================================================================
 // BUTTON CONFIGURATION
 // =============================================================================
+// Button is on GPIO0 (active LOW with internal pull-up)
+//
+// BUTTON ACTIONS:
+// ---------------
+// On Main Screens (Status, GPS, Network, Info, QR):
+//   - Single click:    Next screen
+//   - Double click:    Trigger measurement (send GPS via LoRaWAN)
+//   - Long press:      Enter settings menu
+//   - Very long press: Force TX (debug)
+//
+// In Settings Menu:
+//   - Single click:    Next menu item
+//   - Double click:    Select/edit item
+//   - Long press:      Exit menu and save
+//
+// In Edit Mode:
+//   - Single click:    Change value
+//   - Double click:    Confirm and exit edit
+//   - Long press:      Confirm and exit edit
+//
+// When Display is Off:
+//   - Any press:       Wake display
+//
 #define BTN_DEBOUNCE_MS         50
-#define BTN_DOUBLE_CLICK_MS     300
-#define BTN_LONG_PRESS_MS       1000
-#define BTN_VERY_LONG_PRESS_MS  3000
+#define BTN_DOUBLE_CLICK_MS     300     // Max time between clicks for double-click
+#define BTN_LONG_PRESS_MS       1000    // 1 second for long press
+#define BTN_VERY_LONG_PRESS_MS  3000    // 3 seconds for very long press
 
 // =============================================================================
 // DISPLAY CONFIGURATION
@@ -87,7 +110,7 @@ enum class OperationMode : uint8_t {
 #define DISPLAY_WIDTH           128
 #define DISPLAY_HEIGHT          64
 #define DISPLAY_UPDATE_MS       250     // Refresh rate
-#define DISPLAY_TIMEOUT_MS      30000   // Auto-off after inactivity (0=never)
+#define DISPLAY_TIMEOUT_MS      300000  // Auto-off after 5 minutes (0=never)
 #define DISPLAY_CONTRAST        255     // 0-255
 
 // Number of main screens (used for cycling)

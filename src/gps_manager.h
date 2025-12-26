@@ -42,6 +42,7 @@ private:
     bool _updated = false;
     bool _powerOn = false;
     uint32_t _lastFixTime = 0;
+    uint32_t _lastStatsTime = 0;
 
     // Saved position for distance calculation
     double _savedLat = 0;
@@ -50,6 +51,7 @@ private:
 
     void updateData();
     bool validateFix();
+    void printStats();
 };
 
 // =============================================================================
@@ -59,7 +61,8 @@ private:
 inline void GPSManager::begin(HardwareSerial& serial, uint8_t rxPin, uint8_t txPin) {
     _serial = &serial;
 
-    // Setup GPS EN pin for power control
+    // Setup GPS EN pin for power control (if used)
+    // Note: GT-U7 is typically always on when powered via VCC
     pinMode(GPS_EN_PIN, OUTPUT);
     powerOn();
 
@@ -70,6 +73,11 @@ inline void GPSManager::begin(HardwareSerial& serial, uint8_t rxPin, uint8_t txP
     _data = {0, 0, 0, 0, 0, false};
 
     DEBUG_PRINTF("[GPS] Initialized on RX:%d TX:%d EN:%d @ %d baud\n", rxPin, txPin, GPS_EN_PIN, GPS_BAUD);
+    DEBUG_PRINTLN("[GPS] Waiting for GPS data...");
+
+    #if GPS_DEBUG_OUTPUT
+    DEBUG_PRINTLN("[GPS] GPS_DEBUG_OUTPUT is ENABLED - raw NMEA will be printed");
+    #endif
 }
 
 inline void GPSManager::update() {
@@ -87,6 +95,30 @@ inline void GPSManager::update() {
         if (_gps.encode(c)) {
             updateData();
         }
+    }
+
+    // Print GPS stats periodically (every 10 seconds)
+    uint32_t now = millis();
+    if ((now - _lastStatsTime) >= 10000) {
+        _lastStatsTime = now;
+        printStats();
+    }
+}
+
+inline void GPSManager::printStats() {
+    DEBUG_PRINTF("[GPS] Stats: chars=%lu, sentences=%lu, failed=%lu, sats=%d, fix=%s\n",
+        _gps.charsProcessed(),
+        _gps.sentencesWithFix(),
+        _gps.failedChecksum(),
+        _gps.satellites.value(),
+        _data.valid ? "YES" : "NO");
+
+    if (_gps.charsProcessed() == 0) {
+        DEBUG_PRINTLN("[GPS] WARNING: No data received! Check wiring:");
+        DEBUG_PRINTLN("[GPS]   - GPS TXD -> ESP32 GPIO48 (RX)");
+        DEBUG_PRINTLN("[GPS]   - GPS RXD -> ESP32 GPIO47 (TX)");
+        DEBUG_PRINTLN("[GPS]   - GPS VCC -> 3.3V or 5V");
+        DEBUG_PRINTLN("[GPS]   - GPS GND -> GND");
     }
 }
 

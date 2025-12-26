@@ -246,11 +246,19 @@ inline void DisplayManager::setState(UIState state) {
 }
 
 inline void DisplayManager::nextScreen() {
-    if (_state <= UIState::SCREEN_QR) {
-        uint8_t next = ((uint8_t)_state + 1) % NUM_MAIN_SCREENS;
+    // Cycle through main screens (0 to NUM_MAIN_SCREENS-1)
+    // Works from any main screen state
+    uint8_t current = (uint8_t)_state;
+    if (current < NUM_MAIN_SCREENS) {
+        uint8_t next = (current + 1) % NUM_MAIN_SCREENS;
         _state = (UIState)next;
-        resetActivityTimer();
+        DEBUG_PRINTF("[DISP] Screen: %d -> %d\n", current, next);
+    } else {
+        // If somehow in menu or other state, go to status screen
+        _state = UIState::SCREEN_STATUS;
+        DEBUG_PRINTLN("[DISP] Reset to status screen");
     }
+    resetActivityTimer();
 }
 
 inline void DisplayManager::enterMenu() {
