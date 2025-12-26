@@ -8,7 +8,7 @@
 // BATTERY MANAGER CLASS
 // Heltec V3 Battery Reading:
 // - GPIO1 (ADC1_CH0) for voltage reading
-// - GPIO37 controls FET gate (has pull-up, so LOW = enable, HIGH = disable)
+// - GPIO37 controls FET gate (active HIGH - HIGH = enable, LOW = disable)
 // - Voltage divider: VBAT -> 390kΩ -> ADC -> 100kΩ -> GND
 // - Divider ratio: (390k + 100k) / 100k = 4.9
 // - ADC sees: VBAT / 4.9
@@ -17,6 +17,10 @@
 
 // Battery measurement interval (30 seconds as specified)
 #define BATTERY_MEASURE_INTERVAL_MS  30000
+
+// FET control logic (try HIGH to enable if LOW doesn't work)
+#define FET_ENABLE   HIGH
+#define FET_DISABLE  LOW
 
 // ADC calibration for ESP32-S3 with 11dB attenuation
 // Reference voltage ~2600mV at 4095 counts
@@ -51,12 +55,15 @@ private:
 // =============================================================================
 
 inline void BatteryManager::begin() {
+    DEBUG_PRINTLN("[BAT] Initializing battery manager...");
+    DEBUG_PRINTF("[BAT] VBAT_ADC=GPIO%d, VBAT_CTRL=GPIO%d\n", VBAT_ADC, VBAT_CTRL);
+    DEBUG_PRINTF("[BAT] FET_ENABLE=%s, FET_DISABLE=%s\n",
+        FET_ENABLE == HIGH ? "HIGH" : "LOW",
+        FET_DISABLE == HIGH ? "HIGH" : "LOW");
+
     // Configure ADC control pin (GPIO37)
-    // Has external pull-up, controls FET gate
-    // LOW = FET ON = divider connected (measuring)
-    // HIGH = FET OFF = divider disconnected (power save)
     pinMode(VBAT_CTRL, OUTPUT);
-    digitalWrite(VBAT_CTRL, HIGH);  // Start disabled (power save)
+    digitalWrite(VBAT_CTRL, FET_DISABLE);  // Start disabled (power save)
 
     // Configure ADC pin (GPIO1 = ADC1_CH0)
     pinMode(VBAT_ADC, INPUT);
@@ -94,12 +101,11 @@ inline void BatteryManager::update() {
 }
 
 inline uint16_t BatteryManager::measureVoltage() {
-    // Step 1: Enable FET (LOW = connect divider to ADC)
-    digitalWrite(VBAT_CTRL, LOW);
+    // Step 1: Enable FET to connect divider to ADC
+    digitalWrite(VBAT_CTRL, FET_ENABLE);
 
     // Step 2: Wait for voltage to stabilize
-    // The RC time constant of the divider + ADC input capacitance
-    delay(10);
+    delay(20);
 
     // Step 3: Take multiple samples and average
     uint32_t sum = 0;
@@ -107,13 +113,13 @@ inline uint16_t BatteryManager::measureVoltage() {
 
     for (int i = 0; i < samples; i++) {
         sum += analogRead(VBAT_ADC);
-        delayMicroseconds(200);
+        delayMicroseconds(500);
     }
 
     uint32_t raw = sum / samples;
 
-    // Step 4: Disable FET (HIGH = disconnect for power save)
-    digitalWrite(VBAT_CTRL, HIGH);
+    // Step 4: Disable FET for power save
+    digitalWrite(VBAT_CTRL, FET_DISABLE);
 
     // Step 5: Calculate battery voltage
     // ESP32-S3 ADC with 11dB attenuation: ~0-2600mV for 0-4095
@@ -122,12 +128,29 @@ inline uint16_t BatteryManager::measureVoltage() {
     float voltage = raw * ADC_MULTIPLIER;
 
     // Debug output with raw value for calibration
-    DEBUG_PRINTF("[BAT] RAW=%lu, Voltage=%.0fmV\n", raw, voltage);
+    DEBUG_PRINTF("[BAT] RAW=%lu (FET=%s), Voltage=%.0fmV\n",
+        raw, FET_ENABLE == HIGH ? "HIGH" : "LOW", voltage);
 
-    // Sanity check
-    if (raw < 100) {
-        DEBUG_PRINTLN("[BAT] WARNING: ADC reading very low - check connections!");
-        DEBUG_PRINTF("[BAT] VBAT_ADC=%d, VBAT_CTRL=%d\n", VBAT_ADC, VBAT_CTRL);
+    // If still getting 0, try reading with opposite FET state for debug
+    if (raw < 50) {
+        DEBUG_PRINTLN("[BAT] Low reading - testing opposite FET logic...");
+        digitalWrite(VBAT_CTRL, FET_ENABLE == HIGH ? LOW : HIGH);
+        delay(20);
+        uint32_t testRaw = 0;
+        for (int i = 0; i < 8; i++) {
+            testRaw += analogRead(VBAT_ADC);
+            delayMicroseconds(500);
+        }
+        testRaw /= 8;
+        DEBUG_PRINTF("[BAT] With opposite FET: RAW=%lu\n", testRaw);
+        digitalWrite(VBAT_CTRL, FET_DISABLE);  // Return to disabled
+
+        // If opposite works better, use that value
+        if (testRaw > raw * 2 && testRaw > 100) {
+            DEBUG_PRINTLN("[BAT] NOTE: Opposite FET logic works! Update FET_ENABLE/FET_DISABLE!");
+            raw = testRaw;
+            voltage = raw * ADC_MULTIPLIER;
+        }
     }
 
     return (uint16_t)voltage;
