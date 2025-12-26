@@ -23,12 +23,13 @@ A LoRaWAN coverage mapping device based on Heltec LoRa32 V3 with GPS.
 
 ### Wiring
 
-| GT-U7 GPS | Heltec V3 |
-|-----------|-----------|
-| VCC       | 3.3V or Vext |
-| GND       | GND       |
-| TX        | GPIO46 (configurable) |
-| RX        | GPIO45 (configurable) |
+| GT-U7 GPS | Heltec V3 | Description |
+|-----------|-----------|-------------|
+| VCC       | 3.3V      | Power supply |
+| GND       | GND       | Ground |
+| TXD       | GPIO48    | GPS TX → ESP32 RX |
+| RXD       | GPIO47    | GPS RX ← ESP32 TX |
+| EN        | GPIO46    | Enable (HIGH=on) |
 
 ## Setup
 

@@ -59,8 +59,8 @@ private:
 inline void GPSManager::begin(HardwareSerial& serial, uint8_t rxPin, uint8_t txPin) {
     _serial = &serial;
 
-    // Enable Vext for GPS power (Heltec V3)
-    pinMode(VEXT_CTRL, OUTPUT);
+    // Setup GPS EN pin for power control
+    pinMode(GPS_EN_PIN, OUTPUT);
     powerOn();
 
     // Initialize serial
@@ -69,7 +69,7 @@ inline void GPSManager::begin(HardwareSerial& serial, uint8_t rxPin, uint8_t txP
     // Initialize data structure
     _data = {0, 0, 0, 0, 0, false};
 
-    DEBUG_PRINTF("[GPS] Initialized on RX:%d TX:%d @ %d baud\n", rxPin, txPin, GPS_BAUD);
+    DEBUG_PRINTF("[GPS] Initialized on RX:%d TX:%d EN:%d @ %d baud\n", rxPin, txPin, GPS_EN_PIN, GPS_BAUD);
 }
 
 inline void GPSManager::update() {
@@ -85,14 +85,14 @@ inline void GPSManager::update() {
 }
 
 inline void GPSManager::powerOn() {
-    digitalWrite(VEXT_CTRL, LOW);  // Vext ON (active low)
+    digitalWrite(GPS_EN_PIN, HIGH);  // EN HIGH = GPS on
     _powerOn = true;
     delay(100);  // Let GPS stabilize
     DEBUG_PRINTLN("[GPS] Power ON");
 }
 
 inline void GPSManager::powerOff() {
-    digitalWrite(VEXT_CTRL, HIGH);  // Vext OFF
+    digitalWrite(GPS_EN_PIN, LOW);  // EN LOW = GPS off
     _powerOn = false;
     DEBUG_PRINTLN("[GPS] Power OFF");
 }

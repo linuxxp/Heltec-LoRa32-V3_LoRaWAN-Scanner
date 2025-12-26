@@ -12,9 +12,9 @@
 // =============================================================================
 // GPS CONFIGURATION (GT-U7 Module)
 // =============================================================================
-// TODO: Update these pins based on your wiring
-#define GPS_RX_PIN          46    // ESP32 RX <- GPS TX
-#define GPS_TX_PIN          45    // ESP32 TX -> GPS RX
+#define GPS_RX_PIN          48    // ESP32 RX <- GPS TXD
+#define GPS_TX_PIN          47    // ESP32 TX -> GPS RXD
+#define GPS_EN_PIN          46    // GPS EN pin (HIGH = on, LOW = off)
 #define GPS_BAUD            9600
 
 // GPS validity thresholds
