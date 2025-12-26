@@ -547,10 +547,6 @@ inline const char* DisplayManager::getMenuItemName(MenuItem item) {
 }
 
 inline void DisplayManager::drawQRScreen() {
-    // Title at top
-    _display->setFont(u8g2_font_5x7_tf);
-    _display->drawStr(0, 7, "Scan to register:");
-
     if (_qrContent.length() == 0) {
         _display->setFont(u8g2_font_6x10_tf);
         _display->drawStr(10, 35, "No credentials");
@@ -569,18 +565,16 @@ inline void DisplayManager::drawQRScreen() {
         return;
     }
 
-    // Calculate size and position
     // QR code version 3 = 29x29 modules
-    // Display is 128x64, need to fit QR code nicely
-    // Scale: 2 pixels per module = 58x58 pixels (too big)
-    // Scale: 1 pixel per module = 29x29 pixels (good, leaves room for text)
+    // Display is 128x64
+    // Scale 2: 29*2 = 58 pixels, fits in 64 height with offset 3
 
-    const int scale = 2;  // 2 pixels per module
-    const int qrSize = qrcode.size * scale;
+    const int scale = 2;
+    const int qrSize = qrcode.size * scale;  // 58 pixels
 
-    // Center QR code horizontally, position below title
-    const int offsetX = (128 - qrSize) / 2;
-    const int offsetY = 10;
+    // Center QR code on screen
+    const int offsetX = (128 - qrSize) / 2;  // (128-58)/2 = 35
+    const int offsetY = (64 - qrSize) / 2;   // (64-58)/2 = 3
 
     // Draw QR code
     for (uint8_t y = 0; y < qrcode.size; y++) {

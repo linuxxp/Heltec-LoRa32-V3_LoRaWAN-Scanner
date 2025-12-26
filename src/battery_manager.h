@@ -33,13 +33,13 @@ private:
 // =============================================================================
 
 inline void BatteryManager::begin() {
-    // Enable battery voltage reading on Heltec V3
+    // Setup ADC control pin (Heltec V3: LOW = enable reading)
     pinMode(VBAT_CTRL, OUTPUT);
-    digitalWrite(VBAT_CTRL, LOW);  // Enable voltage divider
+    digitalWrite(VBAT_CTRL, HIGH);  // Start disabled
 
-    // Configure ADC
+    // Configure ADC for ESP32-S3
     analogReadResolution(12);
-    analogSetAttenuation(ADC_11db);
+    analogSetPinAttenuation(VBAT_ADC, ADC_11db);
 
     // Initial reading
     update();
@@ -64,32 +64,32 @@ inline void BatteryManager::update() {
 }
 
 inline uint16_t BatteryManager::readVoltage() {
-    // Enable voltage divider
+    // Enable voltage divider (LOW = enabled on Heltec V3)
     digitalWrite(VBAT_CTRL, LOW);
-    delay(10);  // Let it stabilize
+    delay(20);  // Let it stabilize
 
     // Take multiple samples and average
     uint32_t sum = 0;
     for (int i = 0; i < BATTERY_ADC_SAMPLES; i++) {
         sum += analogRead(VBAT_ADC);
-        delayMicroseconds(100);
+        delay(2);
     }
     uint32_t raw = sum / BATTERY_ADC_SAMPLES;
 
     // Disable voltage divider to save power
     digitalWrite(VBAT_CTRL, HIGH);
 
-    // Heltec V3 uses a voltage divider: 390k / 100k
-    // ADC reference is 3.3V with 12-bit resolution
-    // Vbat = Vadc * (390 + 100) / 100 = Vadc * 4.9
-    // Vadc = raw * 3300 / 4095
-    // Vbat = raw * 3300 * 4.9 / 4095 ≈ raw * 3.95
+    // Heltec V3 voltage calculation:
+    // ADC: 12-bit (0-4095), reference ~2.6V with ADC_11db attenuation
+    // Voltage divider: 390k / 100k = ratio 4.9
+    // Formula from Heltec: Vbat = raw * (1/4096) * 3.3 * 4.01 * 1000
+    // Simplified: Vbat(mV) = raw * 3.23
 
-    // Calibration factor (adjust if readings are off)
-    const float calibration = 3.95f;
-    uint16_t voltage = (uint16_t)(raw * calibration);
+    float voltage = raw * 3.23f;
 
-    return voltage;
+    DEBUG_PRINTF("[BAT] Raw ADC: %lu, Voltage: %.0fmV\n", raw, voltage);
+
+    return (uint16_t)voltage;
 }
 
 inline uint8_t BatteryManager::voltageToPercent(uint16_t voltage) {
