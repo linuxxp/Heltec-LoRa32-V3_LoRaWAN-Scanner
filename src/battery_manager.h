@@ -2,14 +2,15 @@
 #define BATTERY_MANAGER_H
 
 #include <Arduino.h>
+#include <esp_adc_cal.h>
 #include "config.h"
 
 // =============================================================================
 // BATTERY MANAGER CLASS
 // Heltec V3 Battery Reading:
 // - GPIO1 (ADC1_CH0) for voltage reading
-// - GPIO37 controls voltage divider (LOW = enable, HIGH = disable)
-// - Voltage divider: VBAT -> 390kΩ -> GPIO1 -> 100kΩ -> GND
+// - GPIO37 controls FET gate (has pull-up, so LOW = enable reading)
+// - Voltage divider: VBAT -> 390kΩ -> ADC -> 100kΩ -> GND
 // - Divider ratio: (390k + 100k) / 100k = 4.9
 // =============================================================================
 class BatteryManager {
@@ -38,23 +39,29 @@ private:
 // =============================================================================
 
 inline void BatteryManager::begin() {
-    // Heltec V3: GPIO37 controls the voltage divider
-    // LOW = enable reading, HIGH = disable (save power)
+    // Configure ADC control pin
+    // GPIO37 has external pull-up, controls FET gate
+    // LOW = FET ON = battery voltage divider connected to ADC
+    // HIGH = FET OFF = disconnected (default state due to pull-up)
     pinMode(VBAT_CTRL, OUTPUT);
-    digitalWrite(VBAT_CTRL, LOW);  // Enable for initial reading
 
-    // Configure ADC for battery pin (GPIO1 = ADC1_CH0)
-    // Use ADC1 which is more reliable on ESP32-S3
-    analogReadResolution(12);  // 12-bit resolution (0-4095)
-    analogSetAttenuation(ADC_11db);  // Full range ~0-3.3V
+    // Configure ADC pin
+    pinMode(VBAT_ADC, INPUT);
 
-    delay(50);  // Let ADC stabilize
+    // Configure ADC with proper attenuation for the specific pin
+    analogReadResolution(12);
+    analogSetPinAttenuation(VBAT_ADC, ADC_11db);
 
-    // Initial reading
+    // Enable reading and wait for stabilization
+    digitalWrite(VBAT_CTRL, LOW);
+    delay(100);  // Longer delay for initial stabilization
+
+    // Force first reading
+    _lastUpdate = 0;
     update();
 
-    // Disable voltage divider to save power
-    digitalWrite(VBAT_CTRL, HIGH);
+    // Keep enabled for continuous monitoring (can disable to save power)
+    // digitalWrite(VBAT_CTRL, HIGH);
 
     DEBUG_PRINTF("[BAT] Initialized: %dmV (%d%%)\n", _voltage, _percent);
 }
@@ -70,75 +77,65 @@ inline void BatteryManager::update() {
     _voltage = readVoltage();
     _percent = voltageToPercent(_voltage);
 
-    // Simple charging detection: voltage above 4.2V usually means charging
+    // Charging detection: voltage above 4.2V usually means charging
     _charging = (_voltage > BATTERY_FULL_MV);
 }
 
 inline uint16_t BatteryManager::readVoltage() {
-    // Enable voltage divider
+    // Ensure FET is enabled (LOW = enable)
     digitalWrite(VBAT_CTRL, LOW);
-    delay(10);  // Let it stabilize
+    delay(5);  // Short stabilization delay
 
     // Take multiple samples and average
     uint32_t sum = 0;
-    for (int i = 0; i < BATTERY_ADC_SAMPLES; i++) {
-        sum += analogRead(VBAT_ADC);
-        delayMicroseconds(500);
-    }
-    uint32_t raw = sum / BATTERY_ADC_SAMPLES;
+    int validSamples = 0;
 
-    // Disable voltage divider to save power
-    digitalWrite(VBAT_CTRL, HIGH);
+    for (int i = 0; i < BATTERY_ADC_SAMPLES; i++) {
+        uint16_t sample = analogRead(VBAT_ADC);
+        sum += sample;
+        validSamples++;
+        delayMicroseconds(100);
+    }
+
+    uint32_t raw = (validSamples > 0) ? (sum / validSamples) : 0;
 
     // Heltec V3 voltage calculation:
-    // ADC: 12-bit (0-4095), with ADC_11db attenuation reads ~0-2.5V
-    // Voltage divider ratio: (390k + 100k) / 100k = 4.9
+    // ESP32-S3 ADC with 11db attenuation: ~0-3100mV range for 0-4095
+    // Voltage divider ratio: 4.9 (390k + 100k) / 100k
     //
-    // Based on Meshtastic firmware and ropg's heltec_esp32_lora_v3 library:
-    // The actual voltage = ADC_reading * (reference_voltage / 4095) * divider_ratio
-    // With calibration factor for Heltec V3:
-    // Vbat = raw * 0.00159 * 1000 (in mV) or approximately raw * 1.6
+    // ADC voltage = raw * (3100 / 4095) = raw * 0.757
+    // Battery voltage = ADC voltage * 4.9 = raw * 3.71
     //
-    // Alternative formula from Heltec: raw * XS * MUL where XS=0.0025, MUL=1000
-    // = raw * 2.5
-    //
-    // Using empirically calibrated value for Heltec V3:
-    float voltage = raw * 1.6f;
+    // But ESP32-S3 ADC is not perfectly linear, so we use calibrated value
+    // Based on Heltec examples: multiplier around 3.2 - 3.7
 
-    // Sanity check - if reading seems wrong, try alternative calculation
-    if (voltage < 2500 || voltage > 5000) {
-        // Alternative: use raw * 2.5 from Heltec official example
-        voltage = raw * 2.5f;
+    float voltage = raw * 3.7f;  // Calibrated multiplier
+
+    // Debug output
+    DEBUG_PRINTF("[BAT] ADC raw=%lu, calculated=%0.fmV\n", raw, voltage);
+
+    // Sanity check
+    if (voltage < 1000) {
+        DEBUG_PRINTLN("[BAT] WARNING: Very low reading, check battery connection");
     }
-
-    DEBUG_PRINTF("[BAT] Raw: %lu, Voltage: %.0fmV\n", raw, voltage);
 
     return (uint16_t)voltage;
 }
 
 inline uint8_t BatteryManager::voltageToPercent(uint16_t voltage) {
-    // Li-ion/LiPo discharge curve approximation
-    // Based on typical LiPo discharge characteristics
-
     if (voltage >= BATTERY_FULL_MV) return 100;
     if (voltage <= BATTERY_EMPTY_MV) return 0;
 
-    // Piecewise linear approximation matching real LiPo curve
-    // From ropg's heltec_esp32_lora_v3 library calibration
+    // Piecewise linear approximation of LiPo discharge curve
     if (voltage >= 4100) {
-        // 4.2V - 4.1V: 100% - 90%
         return 90 + (voltage - 4100) * 10 / 100;
     } else if (voltage >= 3900) {
-        // 4.1V - 3.9V: 90% - 60%
         return 60 + (voltage - 3900) * 30 / 200;
     } else if (voltage >= 3700) {
-        // 3.9V - 3.7V: 60% - 30%
         return 30 + (voltage - 3700) * 30 / 200;
     } else if (voltage >= 3500) {
-        // 3.7V - 3.5V: 30% - 10%
         return 10 + (voltage - 3500) * 20 / 200;
     } else {
-        // 3.5V - 3.2V: 10% - 0%
         return (voltage - BATTERY_EMPTY_MV) * 10 / 300;
     }
 }

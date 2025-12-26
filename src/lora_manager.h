@@ -18,6 +18,11 @@ enum class LoRaState : uint8_t {
     ERROR
 };
 
+// Join configuration
+#define JOIN_MAX_ATTEMPTS       3       // Max attempts before giving up
+#define JOIN_RETRY_DELAY_MS     10000   // 10 seconds between attempts
+#define JOIN_TIMEOUT_MS         30000   // 30 seconds timeout per attempt
+
 // =============================================================================
 // LORA MANAGER CLASS
 // =============================================================================
@@ -28,7 +33,7 @@ public:
 
     // Join network
     bool join(bool force = false);
-    bool isJoined() const { return _state == LoRaState::JOINED || _state == LoRaState::IDLE; }
+    bool isJoined() const { return _joined; }
 
     // Send data
     bool send(const uint8_t* data, size_t len, uint8_t port = LORAWAN_PORT);
@@ -66,13 +71,8 @@ private:
     uint32_t _txFailed = 0;
 
     bool _joined = false;
-
-    // Session persistence
-    uint8_t _nwkSKey[16];
-    uint8_t _appSKey[16];
-    uint32_t _devAddr;
-    uint32_t _fCntUp;
-    uint32_t _fCntDown;
+    uint8_t _joinAttempts = 0;
+    uint32_t _lastJoinAttempt = 0;
 };
 
 // =============================================================================
@@ -120,7 +120,7 @@ inline bool LoRaManager::begin() {
         DEBUG_PRINTF("[LORA] DIO2 switch warning: %d\n", state);
     }
 
-    // Create LoRaWAN node
+    // Create LoRaWAN node with EU868 band
     _node = new LoRaWANNode(_radio, &EU868);
 
     DEBUG_PRINTLN("[LORA] Radio initialized successfully");
@@ -134,13 +134,43 @@ inline void LoRaManager::update() {
 }
 
 inline bool LoRaManager::join(bool force) {
+    // Already joined?
     if (_joined && !force) {
         DEBUG_PRINTLN("[LORA] Already joined");
         return true;
     }
 
-    DEBUG_PRINTLN("[LORA] Starting OTAA join...");
+    // Check if we're still in joining state (prevent concurrent joins)
+    if (_state == LoRaState::JOINING) {
+        DEBUG_PRINTLN("[LORA] Join already in progress");
+        return false;
+    }
+
+    // Rate limit join attempts
+    uint32_t now = millis();
+    if (!force && _joinAttempts > 0 && (now - _lastJoinAttempt) < JOIN_RETRY_DELAY_MS) {
+        DEBUG_PRINTF("[LORA] Waiting before next join attempt (%lu ms remaining)\n",
+            JOIN_RETRY_DELAY_MS - (now - _lastJoinAttempt));
+        return false;
+    }
+
+    // Check max attempts
+    if (!force && _joinAttempts >= JOIN_MAX_ATTEMPTS) {
+        DEBUG_PRINTLN("[LORA] Max join attempts reached. Use Force Join to retry.");
+        return false;
+    }
+
+    // Reset attempts if forcing
+    if (force) {
+        _joinAttempts = 0;
+        _joined = false;
+    }
+
+    _joinAttempts++;
+    _lastJoinAttempt = now;
     _state = LoRaState::JOINING;
+
+    DEBUG_PRINTF("[LORA] Starting OTAA join (attempt %d/%d)...\n", _joinAttempts, JOIN_MAX_ATTEMPTS);
 
     // Get credentials from generator
     const LoRaWANCredentials& creds = CredentialsGenerator::getCredentials();
@@ -155,31 +185,41 @@ inline bool LoRaManager::join(bool force) {
     }
 
     DEBUG_PRINTF("[LORA] DevEUI: %s\n", CredentialsGenerator::getDevEuiStr());
-    DEBUG_PRINTF("[LORA] AppEUI: %s\n", CredentialsGenerator::getAppEuiStr());
+    DEBUG_PRINTF("[LORA] JoinEUI: %s\n", CredentialsGenerator::getAppEuiStr());
 
     // Begin OTAA join
     // For LoRaWAN 1.0.x, nwkKey and appKey are the same
     _node->beginOTAA(joinEUI, devEUI, (uint8_t*)creds.appKey, (uint8_t*)creds.appKey);
 
-    // Attempt to join (blocking, with timeout)
     DEBUG_PRINTLN("[LORA] Sending join request...");
 
-    // Try to activate - this sends join request and waits for accept
+    // Try to activate - this sends ONE join request and waits for accept
     int16_t state = _node->activateOTAA();
 
     if (state == RADIOLIB_ERR_NONE) {
         DEBUG_PRINTLN("[LORA] Join successful!");
         _joined = true;
         _state = LoRaState::JOINED;
-
-        // Save session keys for potential restoration
-        // Note: In production, save to NVS for persistence across reboots
-
+        _joinAttempts = 0;  // Reset on success
         return true;
     } else {
-        DEBUG_PRINTF("[LORA] Join failed: %d\n", state);
+        DEBUG_PRINTF("[LORA] Join failed with error: %d\n", state);
+
+        // Decode common errors
+        switch (state) {
+            case RADIOLIB_ERR_NETWORK_NOT_JOINED:
+                DEBUG_PRINTLN("[LORA] -> No Join Accept received");
+                break;
+            case RADIOLIB_ERR_RX_TIMEOUT:
+                DEBUG_PRINTLN("[LORA] -> RX timeout waiting for response");
+                break;
+            default:
+                DEBUG_PRINTLN("[LORA] -> Unknown error");
+                break;
+        }
+
         _lastError = state;
-        _state = LoRaState::ERROR;
+        _state = LoRaState::IDLE;  // Go back to IDLE, not ERROR
         _joined = false;
         return false;
     }

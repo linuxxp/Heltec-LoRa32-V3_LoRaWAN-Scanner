@@ -22,6 +22,7 @@
 #include "gps_manager.h"
 #include "display_manager.h"
 #include "lora_manager.h"
+#include "led_manager.h"
 #include "payload_encoder.h"
 
 // =============================================================================
@@ -32,6 +33,7 @@ BatteryManager battery;
 GPSManager gps;
 DisplayManager display;
 LoRaManager lora;
+LEDManager led;
 
 // GPS Serial
 HardwareSerial GPSSerial(1);
@@ -88,6 +90,10 @@ void setup() {
     // Initialize components
     DEBUG_PRINTLN("[INIT] Starting initialization...");
 
+    // LED - initialize first for status indication
+    led.begin(LED_PIN);
+    led.setPattern(LEDManager::PATTERN_FAST_BLINK);  // Fast blink during init
+
     // Button
     button.begin(USER_BUTTON);
     button.setCallback(handleButton);
@@ -142,8 +148,16 @@ void setup() {
         state.loraJoined = true;
         display.setJoined(true);
         DEBUG_PRINTLN("[INIT] Network joined successfully!");
+        led.blink(100, 100, 3);  // Success indication
     } else {
         DEBUG_PRINTLN("[INIT] Join failed - will retry later");
+    }
+
+    // Set LED pattern based on status
+    if (state.loraJoined) {
+        led.setPattern(LEDManager::PATTERN_HEARTBEAT);  // Heartbeat = joined and ready
+    } else {
+        led.setPattern(LEDManager::PATTERN_SLOW_BLINK);  // Slow blink = not joined
     }
 
     DEBUG_PRINTLN("[INIT] Initialization complete!\n");
@@ -158,6 +172,7 @@ void loop() {
     battery.update();
     gps.update();
     lora.update();
+    led.update();
 
     // Check if we need to trigger a measurement based on mode
     switch (state.mode) {
@@ -462,6 +477,17 @@ void updateDisplayData() {
     display.setTxFailed(state.txFailed);
     display.setLastTxTime(state.lastTxTime);
     display.setLastTxSuccess(lora.getLastTxSuccess());
+
+    // Update LED pattern based on current status
+    if (lora.isBusy()) {
+        led.setPattern(LEDManager::PATTERN_FAST_BLINK);  // Fast = busy (joining/sending)
+    } else if (!state.loraJoined) {
+        led.setPattern(LEDManager::PATTERN_SLOW_BLINK);  // Slow = not joined
+    } else if (!gps.hasValidFix()) {
+        led.setPattern(LEDManager::PATTERN_SLOW_BLINK);  // Slow = waiting for GPS
+    } else {
+        led.setPattern(LEDManager::PATTERN_HEARTBEAT);   // Heartbeat = ready
+    }
 }
 
 void saveSettings() {

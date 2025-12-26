@@ -24,19 +24,30 @@ static volatile DRAM_ATTR uint32_t _btnIsrReleaseTime = 0;
 static volatile DRAM_ATTR bool _btnIsrPressEvent = false;
 static volatile DRAM_ATTR bool _btnIsrReleaseEvent = false;
 static volatile DRAM_ATTR uint8_t _btnIsrPin = 0;
+static volatile DRAM_ATTR uint32_t _btnIsrLastChange = 0;
+
+// Hardware debounce threshold in ISR (microseconds equivalent via millis)
+#define ISR_DEBOUNCE_MS 20
 
 // =============================================================================
 // ISR HANDLER (in IRAM, accesses only DRAM static variables)
 // =============================================================================
 static void IRAM_ATTR buttonISR() {
     uint32_t now = millis();
+
+    // Quick hardware debounce in ISR
+    if ((now - _btnIsrLastChange) < ISR_DEBOUNCE_MS) {
+        return;  // Ignore bounces
+    }
+    _btnIsrLastChange = now;
+
     bool pressed = !digitalRead(_btnIsrPin);  // Active low
 
-    if (pressed) {
+    if (pressed && !_btnIsrPressed) {
         _btnIsrPressTime = now;
         _btnIsrPressEvent = true;
         _btnIsrPressed = true;
-    } else {
+    } else if (!pressed && _btnIsrPressed) {
         _btnIsrReleaseTime = now;
         _btnIsrReleaseEvent = true;
         _btnIsrPressed = false;
@@ -77,9 +88,6 @@ private:
 
     EventCallback _callback = nullptr;
 
-    // Debounce
-    uint32_t _lastDebounceTime = 0;
-
     void emitEvent(ButtonEvent event);
 };
 
@@ -105,60 +113,59 @@ inline void ButtonHandler::begin(uint8_t pin) {
 inline void ButtonHandler::update() {
     uint32_t now = millis();
 
+    // Safety: Reset stuck state machine (if in non-IDLE state for too long without button pressed)
+    if (_state != State::IDLE && !_btnIsrPressed && (now - _pressTime) > 5000) {
+        DEBUG_PRINTLN("[BTN] State machine reset (timeout)");
+        _state = State::IDLE;
+        _clickCount = 0;
+    }
+
     // Process ISR-captured press event
     if (_btnIsrPressEvent) {
         _btnIsrPressEvent = false;
+        _pressTime = _btnIsrPressTime;
 
-        // Debounce check
-        if ((now - _lastDebounceTime) >= BTN_DEBOUNCE_MS) {
-            _lastDebounceTime = now;
-            _pressTime = _btnIsrPressTime;
-
-            if (_state == State::IDLE) {
-                _state = State::PRESSED;
-                DEBUG_PRINTLN("[BTN] Press detected");
-            } else if (_state == State::WAIT_DOUBLE) {
-                // Second press for double click
-                _pressTime = _btnIsrPressTime;
-                _clickCount = 2;
-                _state = State::PRESSED;
-            }
+        if (_state == State::IDLE) {
+            _state = State::PRESSED;
+            DEBUG_PRINTLN("[BTN] Press detected");
+        } else if (_state == State::WAIT_DOUBLE) {
+            // Second press for double click
+            _clickCount = 2;
+            _state = State::PRESSED;
         }
     }
 
     // Process ISR-captured release event
     if (_btnIsrReleaseEvent) {
         _btnIsrReleaseEvent = false;
+        _releaseTime = _btnIsrReleaseTime;
 
-        // Debounce check
-        if ((now - _lastDebounceTime) >= BTN_DEBOUNCE_MS) {
-            _lastDebounceTime = now;
-            _releaseTime = _btnIsrReleaseTime;
+        if (_state == State::PRESSED) {
+            uint32_t pressDuration = _releaseTime - _pressTime;
 
-            if (_state == State::PRESSED) {
-                uint32_t pressDuration = _releaseTime - _pressTime;
-
-                if (pressDuration >= BTN_VERY_LONG_PRESS_MS) {
-                    emitEvent(ButtonEvent::VERY_LONG_PRESS);
-                    _state = State::IDLE;
-                } else if (pressDuration >= BTN_LONG_PRESS_MS) {
-                    emitEvent(ButtonEvent::LONG_PRESS);
+            if (pressDuration >= BTN_VERY_LONG_PRESS_MS) {
+                emitEvent(ButtonEvent::VERY_LONG_PRESS);
+                _state = State::IDLE;
+                _clickCount = 0;
+            } else if (pressDuration >= BTN_LONG_PRESS_MS) {
+                emitEvent(ButtonEvent::LONG_PRESS);
+                _state = State::IDLE;
+                _clickCount = 0;
+            } else {
+                // Short press - wait for possible double click
+                if (_clickCount == 2) {
+                    // This was the second press of a double-click
+                    emitEvent(ButtonEvent::DOUBLE_CLICK);
+                    _clickCount = 0;
                     _state = State::IDLE;
                 } else {
-                    // Short press - wait for possible double click
-                    if (_clickCount == 2) {
-                        // This was the second press of a double-click
-                        emitEvent(ButtonEvent::DOUBLE_CLICK);
-                        _clickCount = 0;
-                        _state = State::IDLE;
-                    } else {
-                        _clickCount = 1;
-                        _state = State::WAIT_DOUBLE;
-                    }
+                    _clickCount = 1;
+                    _state = State::WAIT_DOUBLE;
                 }
-            } else if (_state == State::LONG_PRESSING) {
-                _state = State::IDLE;
             }
+        } else if (_state == State::LONG_PRESSING) {
+            _state = State::IDLE;
+            _clickCount = 0;
         }
     }
 
