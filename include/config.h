@@ -100,7 +100,7 @@ enum class OperationMode : uint8_t {
 //   - Any press:       Wake display
 //
 #define BTN_DEBOUNCE_MS         50
-#define BTN_DOUBLE_CLICK_MS     500     // Max time between clicks for double-click
+#define BTN_DOUBLE_CLICK_MS     1000    // Max time between clicks for double-click
 #define BTN_LONG_PRESS_MS       1000    // 1 second for long press
 #define BTN_VERY_LONG_PRESS_MS  3000    // 3 seconds for very long press
 
@@ -120,7 +120,7 @@ enum class OperationMode : uint8_t {
 // BATTERY CONFIGURATION
 // =============================================================================
 // Heltec V3 battery ADC calibration
-#define BATTERY_FULL_MV         4200
+#define BATTERY_FULL_MV         4150    // 100% at 4.15V (charging shows same)
 #define BATTERY_EMPTY_MV        3200
 #define BATTERY_ADC_SAMPLES     32
 #define BATTERY_UPDATE_MS       10000
