@@ -88,7 +88,7 @@ public:
     void showQRScreen() { _state = UIState::SCREEN_QR; resetActivityTimer(); }
 
 private:
-    U8G2_SSD1306_128X64_NONAME_F_HW_I2C* _display = nullptr;
+    U8G2_SSD1306_128X64_NONAME_F_SW_I2C* _display = nullptr;
 
     UIState _state = UIState::SCREEN_STATUS;
     MenuItem _selectedItem = MenuItem::MODE;
@@ -141,6 +141,11 @@ private:
 // =============================================================================
 
 inline void DisplayManager::begin() {
+    // Enable Vext power for OLED (Heltec V3: LOW = ON)
+    pinMode(VEXT_CTRL, OUTPUT);
+    digitalWrite(VEXT_CTRL, LOW);
+    delay(100);  // Wait for power to stabilize
+
     // Reset display
     pinMode(OLED_RST, OUTPUT);
     digitalWrite(OLED_RST, LOW);
@@ -148,10 +153,8 @@ inline void DisplayManager::begin() {
     digitalWrite(OLED_RST, HIGH);
     delay(50);
 
-    // Initialize I2C and display
-    Wire.begin(OLED_SDA, OLED_SCL);
-
-    _display = new U8G2_SSD1306_128X64_NONAME_F_HW_I2C(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
+    // Initialize display with software I2C (more reliable on Heltec V3)
+    _display = new U8G2_SSD1306_128X64_NONAME_F_SW_I2C(U8G2_R0, OLED_SCL, OLED_SDA, OLED_RST);
     _display->begin();
     _display->setContrast(DISPLAY_CONTRAST);
     _display->setFont(u8g2_font_6x10_tf);
