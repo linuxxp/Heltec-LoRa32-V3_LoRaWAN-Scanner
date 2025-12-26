@@ -267,16 +267,19 @@ void handleMenuNavigation(ButtonEvent event) {
                 MenuItem item = display.getSelectedItem();
 
                 if (item == MenuItem::FORCE_JOIN) {
-                    // Force rejoin
+                    // Force rejoin - show notification immediately
                     DEBUG_PRINTLN("[MENU] Force rejoin");
-                    display.showNotification("Joining...", 2000);
+                    display.showNotification("Joining...", 30000);  // Long timeout
+                    display.update();  // Force immediate display update
+
                     lora.join(true);
                     state.loraJoined = lora.isJoined();
                     display.setJoined(state.loraJoined);
+
                     if (state.loraJoined) {
-                        display.showNotification("Joined!", 1500);
+                        display.showNotification("Joined!", 2000);
                     } else {
-                        display.showNotification("Join Failed", 1500);
+                        display.showNotification("Join Failed", 2000);
                     }
                 } else if (item == MenuItem::SHOW_QR) {
                     // Show QR code screen
