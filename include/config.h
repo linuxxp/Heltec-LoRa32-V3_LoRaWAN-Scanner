@@ -90,15 +90,8 @@ enum class OperationMode : uint8_t {
 #define DISPLAY_TIMEOUT_MS      30000   // Auto-off after inactivity (0=never)
 #define DISPLAY_CONTRAST        255     // 0-255
 
-// Number of main screens
-#define NUM_SCREENS             5
-
-// Screen indices
-#define SCREEN_STATUS           0
-#define SCREEN_GPS              1
-#define SCREEN_NETWORK          2
-#define SCREEN_INFO             3
-#define SCREEN_QR               4
+// Number of main screens (used for cycling)
+#define NUM_MAIN_SCREENS        5
 
 // =============================================================================
 // BATTERY CONFIGURATION

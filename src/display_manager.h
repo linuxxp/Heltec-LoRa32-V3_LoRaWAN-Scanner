@@ -243,8 +243,8 @@ inline void DisplayManager::setState(UIState state) {
 }
 
 inline void DisplayManager::nextScreen() {
-    if (_state <= UIState::SCREEN_INFO) {
-        uint8_t next = ((uint8_t)_state + 1) % NUM_SCREENS;
+    if (_state <= UIState::SCREEN_QR) {
+        uint8_t next = ((uint8_t)_state + 1) % NUM_MAIN_SCREENS;
         _state = (UIState)next;
         resetActivityTimer();
     }
