@@ -14,6 +14,8 @@ A LoRaWAN coverage mapping device based on Heltec LoRa32 V3 with GPS.
 - **OLED display** - Shows GPS status, network info, and settings
 - **Single-button navigation** - Full menu control with one button
 - **Battery monitoring** - Shows battery percentage and voltage
+- **Auto-generated credentials** - Unique LoRaWAN keys from ESP32 MAC
+- **QR code registration** - Scan QR to get device credentials
 
 ## Hardware
 
@@ -37,22 +39,7 @@ A LoRaWAN coverage mapping device based on Heltec LoRa32 V3 with GPS.
 
 Install [VS Code](https://code.visualstudio.com/) and the [PlatformIO extension](https://platformio.org/install/ide?install=vscode).
 
-### 2. Configure Credentials
-
-Copy `include/credentials.h.example` to `include/credentials.h` and fill in your Helium Console credentials:
-
-```cpp
-// Device EUI (8 bytes, LSB first)
-static const uint8_t DEVEUI[8] = { 0xXX, 0xXX, ... };
-
-// Application EUI (8 bytes, LSB first)
-static const uint8_t APPEUI[8] = { 0xXX, 0xXX, ... };
-
-// Application Key (16 bytes, MSB)
-static const uint8_t APPKEY[16] = { 0xXX, 0xXX, ... };
-```
-
-### 3. Build and Upload
+### 2. Build and Upload
 
 ```bash
 # Build
@@ -63,6 +50,22 @@ pio run --target upload
 
 # Monitor serial output
 pio device monitor
+```
+
+### 3. Register Device in Helium Console
+
+The device automatically generates unique LoRaWAN credentials from its ESP32 MAC address.
+
+1. Power on the device
+2. Navigate to **Settings → Show QR** (or cycle screens to QR)
+3. Scan the QR code with your phone
+4. The QR contains: `LORA:DevEUI;AppEUI;AppKey`
+5. Register these credentials in [Helium Console](https://console.helium.com/)
+
+**QR Code Format:**
+```
+LORA:AABBCCDDFFFE0011;0000000000000000;0123456789ABCDEF...
+     └── DevEUI ──┘  └── AppEUI ──┘    └── AppKey (32 hex) ──┘
 ```
 
 ## Button Controls

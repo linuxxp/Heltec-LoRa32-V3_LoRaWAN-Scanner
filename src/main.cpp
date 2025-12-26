@@ -16,6 +16,7 @@
 
 #include <Arduino.h>
 #include "config.h"
+#include "credentials_generator.h"
 #include "button_handler.h"
 #include "battery_manager.h"
 #include "gps_manager.h"
@@ -34,6 +35,9 @@ LoRaManager lora;
 
 // GPS Serial
 HardwareSerial GPSSerial(1);
+
+// LoRaWAN Credentials (generated from ESP32 MAC)
+LoRaWANCredentials credentials;
 
 // =============================================================================
 // APPLICATION STATE
@@ -98,6 +102,13 @@ void setup() {
     display.setLoRa(&lora);
 
     delay(1500);  // Show boot screen
+
+    // Generate LoRaWAN credentials from ESP32 MAC
+    DEBUG_PRINTLN("[INIT] Generating LoRaWAN credentials...");
+    CredentialsGenerator::generate(credentials);
+
+    // Set QR code content for display
+    display.setQRContent(CredentialsGenerator::getQRCodeContent());
 
     // GPS
     display.clear();
@@ -195,7 +206,7 @@ void handleButton(ButtonEvent event) {
     UIState uiState = display.getState();
 
     // Handle based on current UI state
-    if (uiState <= UIState::SCREEN_INFO) {
+    if (uiState <= UIState::SCREEN_QR) {
         handleScreenNavigation(event);
     } else if (uiState == UIState::MENU_MAIN) {
         handleMenuNavigation(event);
@@ -250,6 +261,10 @@ void handleMenuNavigation(ButtonEvent event) {
                     lora.join(true);
                     state.loraJoined = lora.isJoined();
                     display.setJoined(state.loraJoined);
+                } else if (item == MenuItem::SHOW_QR) {
+                    // Show QR code screen
+                    DEBUG_PRINTLN("[MENU] Show QR code");
+                    display.showQRScreen();
                 } else if (item == MenuItem::ABOUT) {
                     // Show info screen
                     display.setState(UIState::SCREEN_INFO);

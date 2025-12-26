@@ -91,13 +91,14 @@ enum class OperationMode : uint8_t {
 #define DISPLAY_CONTRAST        255     // 0-255
 
 // Number of main screens
-#define NUM_SCREENS             4
+#define NUM_SCREENS             5
 
 // Screen indices
 #define SCREEN_STATUS           0
 #define SCREEN_GPS              1
 #define SCREEN_NETWORK          2
 #define SCREEN_INFO             3
+#define SCREEN_QR               4
 
 // =============================================================================
 // BATTERY CONFIGURATION

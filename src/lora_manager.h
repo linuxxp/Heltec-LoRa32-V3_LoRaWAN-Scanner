@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <RadioLib.h>
 #include "config.h"
-#include "credentials.h"
+#include "credentials_generator.h"
 
 // =============================================================================
 // LORAWAN STATE
@@ -142,8 +142,15 @@ inline bool LoRaManager::join(bool force) {
     DEBUG_PRINTLN("[LORA] Starting OTAA join...");
     _state = LoRaState::JOINING;
 
+    // Get credentials from generator
+    const uint8_t* appEui = CredentialsGenerator::getAppEui();
+    const uint8_t* devEui = CredentialsGenerator::getDevEui();
+    const uint8_t* appKey = CredentialsGenerator::getAppKey();
+
+    DEBUG_PRINTF("[LORA] DevEUI: %s\n", CredentialsGenerator::getDevEuiStr());
+
     // Begin OTAA join
-    int16_t state = _node->beginOTAA(APPEUI, DEVEUI, APPKEY);
+    int16_t state = _node->beginOTAA(appEui, devEui, appKey);
 
     if (state != RADIOLIB_ERR_NONE) {
         DEBUG_PRINTF("[LORA] Begin OTAA failed: %d\n", state);

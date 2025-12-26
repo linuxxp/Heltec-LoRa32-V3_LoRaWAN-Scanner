@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
 #include <Wire.h>
+#include <qrcode.h>
 #include "config.h"
 #include "gps_manager.h"
 #include "battery_manager.h"
@@ -19,6 +20,7 @@ enum class UIState : uint8_t {
     SCREEN_GPS,
     SCREEN_NETWORK,
     SCREEN_INFO,
+    SCREEN_QR,          // QR code with LoRaWAN credentials
     MENU_MAIN,
     MENU_EDIT
 };
@@ -33,6 +35,7 @@ enum class MenuItem : uint8_t {
     SPREADING_FACTOR,
     GPS_DISTANCE,
     FORCE_JOIN,
+    SHOW_QR,
     ABOUT,
     MENU_COUNT
 };
@@ -80,6 +83,10 @@ public:
     // Activity tracking
     void resetActivityTimer() { _lastActivity = millis(); }
 
+    // QR Code
+    void setQRContent(const String& content) { _qrContent = content; }
+    void showQRScreen() { _state = UIState::SCREEN_QR; resetActivityTimer(); }
+
 private:
     U8G2_SSD1306_128X64_NONAME_F_HW_I2C* _display = nullptr;
 
@@ -109,11 +116,15 @@ private:
     uint32_t _lastUpdate = 0;
     uint32_t _lastActivity = 0;
 
+    // QR Code content
+    String _qrContent;
+
     // Drawing functions
     void drawStatusScreen();
     void drawGPSScreen();
     void drawNetworkScreen();
     void drawInfoScreen();
+    void drawQRScreen();
     void drawMenu();
     void drawEditValue();
 
@@ -189,6 +200,9 @@ inline void DisplayManager::update() {
             break;
         case UIState::SCREEN_INFO:
             drawInfoScreen();
+            break;
+        case UIState::SCREEN_QR:
+            drawQRScreen();
             break;
         case UIState::MENU_MAIN:
             drawMenu();
@@ -523,8 +537,59 @@ inline const char* DisplayManager::getMenuItemName(MenuItem item) {
         case MenuItem::SPREADING_FACTOR: return "SF";
         case MenuItem::GPS_DISTANCE: return "GPS Dist";
         case MenuItem::FORCE_JOIN: return "Force Join";
+        case MenuItem::SHOW_QR: return "Show QR";
         case MenuItem::ABOUT: return "About";
         default: return "?";
+    }
+}
+
+inline void DisplayManager::drawQRScreen() {
+    // Title at top
+    _display->setFont(u8g2_font_5x7_tf);
+    _display->drawStr(0, 7, "Scan to register:");
+
+    if (_qrContent.length() == 0) {
+        _display->setFont(u8g2_font_6x10_tf);
+        _display->drawStr(10, 35, "No credentials");
+        return;
+    }
+
+    // Generate QR code
+    QRCode qrcode;
+    uint8_t qrcodeData[qrcode_getBufferSize(3)];  // Version 3: 29x29 modules
+
+    int8_t err = qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, _qrContent.c_str());
+
+    if (err != 0) {
+        _display->setFont(u8g2_font_6x10_tf);
+        _display->drawStr(10, 35, "QR Error");
+        return;
+    }
+
+    // Calculate size and position
+    // QR code version 3 = 29x29 modules
+    // Display is 128x64, need to fit QR code nicely
+    // Scale: 2 pixels per module = 58x58 pixels (too big)
+    // Scale: 1 pixel per module = 29x29 pixels (good, leaves room for text)
+
+    const int scale = 2;  // 2 pixels per module
+    const int qrSize = qrcode.size * scale;
+
+    // Center QR code horizontally, position below title
+    const int offsetX = (128 - qrSize) / 2;
+    const int offsetY = 10;
+
+    // Draw QR code
+    for (uint8_t y = 0; y < qrcode.size; y++) {
+        for (uint8_t x = 0; x < qrcode.size; x++) {
+            if (qrcode_getModule(&qrcode, x, y)) {
+                if (scale == 1) {
+                    _display->drawPixel(offsetX + x, offsetY + y);
+                } else {
+                    _display->drawBox(offsetX + x * scale, offsetY + y * scale, scale, scale);
+                }
+            }
+        }
     }
 }
 
