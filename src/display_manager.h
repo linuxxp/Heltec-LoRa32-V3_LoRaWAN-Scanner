@@ -315,21 +315,23 @@ inline void DisplayManager::drawHeader(const char* title) {
     _display->setFont(u8g2_font_6x10_tf);
     _display->drawStr(0, 10, title);
 
-    // GPS status icon (position 58)
+    // Status icons (moved right to avoid overlap with title)
     _display->setFont(u8g2_font_5x7_tf);
-    _display->drawStr(58, 7, "G");
+
+    // GPS status icon
+    _display->drawStr(74, 7, "G");
     if (_gps && _gps->hasValidFix()) {
-        _display->drawBox(65, 1, 5, 5);  // Filled = fix
+        _display->drawBox(80, 1, 5, 5);  // Filled = fix
     } else {
-        _display->drawFrame(65, 1, 5, 5);  // Empty = no fix
+        _display->drawFrame(80, 1, 5, 5);  // Empty = no fix
     }
 
-    // LoRa/Join status icon (position 74)
-    _display->drawStr(74, 7, "L");
+    // LoRa/Join status icon
+    _display->drawStr(87, 7, "L");
     if (_joined) {
-        _display->drawBox(81, 1, 5, 5);  // Filled = joined
+        _display->drawBox(93, 1, 5, 5);  // Filled = joined
     } else {
-        _display->drawFrame(81, 1, 5, 5);  // Empty = not joined
+        _display->drawFrame(93, 1, 5, 5);  // Empty = not joined
     }
 
     _display->setFont(u8g2_font_6x10_tf);
