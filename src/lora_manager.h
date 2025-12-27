@@ -19,9 +19,10 @@ enum class LoRaState : uint8_t {
 };
 
 // Join configuration
-#define JOIN_MAX_ATTEMPTS       3       // Max attempts before giving up
+#define JOIN_MAX_ATTEMPTS       3       // Max attempts per session
 #define JOIN_RETRY_DELAY_MS     10000   // 10 seconds between attempts
 #define JOIN_TIMEOUT_MS         30000   // 30 seconds timeout per attempt
+#define JOIN_AUTO_RETRY_MS      60000   // Auto-retry every 60 seconds if not joined
 
 // =============================================================================
 // LORA MANAGER CLASS
@@ -34,6 +35,7 @@ public:
     // Join network
     bool join(bool force = false);
     bool isJoined() const { return _joined; }
+    bool shouldAutoRetryJoin() const;  // Check if auto-retry is needed
 
     // Send data
     bool send(const uint8_t* data, size_t len, uint8_t port = LORAWAN_PORT);
@@ -284,6 +286,17 @@ inline void LoRaManager::setSpreadingFactor(uint8_t sf) {
         _radio->setSpreadingFactor(_sf);
         DEBUG_PRINTF("[LORA] SF set to %d\n", _sf);
     }
+}
+
+inline bool LoRaManager::shouldAutoRetryJoin() const {
+    // Don't retry if already joined or busy
+    if (_joined || isBusy()) {
+        return false;
+    }
+
+    // Check if enough time has passed since last join attempt
+    uint32_t elapsed = millis() - _lastJoinAttempt;
+    return elapsed >= JOIN_AUTO_RETRY_MS;
 }
 
 #endif // LORA_MANAGER_H

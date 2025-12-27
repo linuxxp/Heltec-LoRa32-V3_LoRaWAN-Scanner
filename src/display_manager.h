@@ -437,7 +437,7 @@ inline void DisplayManager::drawGPSScreen() {
 }
 
 inline void DisplayManager::drawNetworkScreen() {
-    drawHeader("Network Stats");
+    drawHeader("Network Stat");
 
     char buf[32];
 

@@ -15,6 +15,7 @@
  */
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include "config.h"
 #include "credentials_generator.h"
 #include "button_handler.h"
@@ -24,6 +25,10 @@
 #include "lora_manager.h"
 #include "led_manager.h"
 #include "payload_encoder.h"
+
+// NVS namespace for settings
+#define NVS_NAMESPACE "lora_scanner"
+Preferences preferences;
 
 // =============================================================================
 // GLOBAL OBJECTS
@@ -193,6 +198,21 @@ void loop() {
             break;
     }
 
+    // Auto-retry join if not connected (every 60 seconds)
+    if (lora.shouldAutoRetryJoin()) {
+        DEBUG_PRINTLN("[LOOP] Auto-retry join...");
+        display.showNotification("Joining...", 30000);
+        display.update();  // Show immediately
+
+        if (lora.join(true)) {  // Force reset attempts
+            state.loraJoined = true;
+            display.setJoined(true);
+            display.showNotification("Joined!", 2000);
+        } else {
+            display.showNotification("Join Failed", 2000);
+        }
+    }
+
     // Process pending transmission
     if (state.pendingTx && !lora.isBusy()) {
         if (sendMeasurement()) {
@@ -240,13 +260,6 @@ void handleScreenNavigation(ButtonEvent event) {
         case ButtonEvent::LONG_PRESS:
             // Enter menu
             display.enterMenu();
-            break;
-
-        case ButtonEvent::VERY_LONG_PRESS:
-            // Force LoRa TX
-            DEBUG_PRINTLN("[BTN] Force TX triggered");
-            state.pendingTx = true;
-            display.showNotification("TX Sent!", 2000);
             break;
 
         default:
@@ -298,13 +311,6 @@ void handleMenuNavigation(ButtonEvent event) {
                     display.menuSelect();
                 }
             }
-            break;
-
-        case ButtonEvent::VERY_LONG_PRESS:
-            // Exit menu and save
-            display.exitMenu();
-            saveSettings();
-            display.showNotification("Saved!", 1000);
             break;
 
         default:
@@ -501,13 +507,47 @@ void updateDisplayData() {
 }
 
 void saveSettings() {
-    // TODO: Save to NVS (Non-Volatile Storage)
-    // Preferences library can be used for this
-    DEBUG_PRINTLN("[SAVE] Settings saved (TODO: implement NVS)");
+    preferences.begin(NVS_NAMESPACE, false);  // Read-write mode
+
+    preferences.putUChar("mode", (uint8_t)state.mode);
+    preferences.putUShort("interval", state.interval);
+    preferences.putUShort("gpsDistance", state.gpsDistance);
+    preferences.putChar("txPower", lora.getTxPower());
+    preferences.putUChar("sf", lora.getSpreadingFactor());
+
+    preferences.end();
+
+    DEBUG_PRINTLN("[NVS] Settings saved");
 }
 
 void loadSettings() {
-    // TODO: Load from NVS
-    // For now, use defaults
-    DEBUG_PRINTLN("[LOAD] Using default settings (TODO: implement NVS)");
+    preferences.begin(NVS_NAMESPACE, true);  // Read-only mode
+
+    // Load mode (default: AUTO)
+    state.mode = (OperationMode)preferences.getUChar("mode", (uint8_t)DEFAULT_MODE);
+
+    // Load interval (default: 30 seconds)
+    state.interval = preferences.getUShort("interval", CONTINUOUS_INTERVAL_DEFAULT);
+    if (state.interval < CONTINUOUS_INTERVAL_MIN || state.interval > CONTINUOUS_INTERVAL_MAX) {
+        state.interval = CONTINUOUS_INTERVAL_DEFAULT;
+    }
+
+    // Load GPS distance (default: 50 meters)
+    state.gpsDistance = preferences.getUShort("gpsDistance", AUTO_DISTANCE_DEFAULT);
+    if (state.gpsDistance < AUTO_DISTANCE_MIN || state.gpsDistance > AUTO_DISTANCE_MAX) {
+        state.gpsDistance = AUTO_DISTANCE_DEFAULT;
+    }
+
+    // Load TX power (default: 14 dBm)
+    int8_t txPower = preferences.getChar("txPower", LORA_DEFAULT_POWER);
+    lora.setTxPower(txPower);
+
+    // Load spreading factor (default: SF7)
+    uint8_t sf = preferences.getUChar("sf", LORA_DEFAULT_SF);
+    lora.setSpreadingFactor(sf);
+
+    preferences.end();
+
+    DEBUG_PRINTF("[NVS] Settings loaded: mode=%d, interval=%d, dist=%d, pwr=%d, sf=%d\n",
+        (int)state.mode, state.interval, state.gpsDistance, txPower, sf);
 }

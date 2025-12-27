@@ -60,7 +60,7 @@ enum class OperationMode : uint8_t {
 // =============================================================================
 // Continuous mode interval (seconds)
 #define CONTINUOUS_INTERVAL_MIN     10
-#define CONTINUOUS_INTERVAL_MAX     3600
+#define CONTINUOUS_INTERVAL_MAX     300
 #define CONTINUOUS_INTERVAL_DEFAULT 30
 
 // Auto mode - minimum distance to trigger new measurement (meters)
@@ -80,12 +80,11 @@ enum class OperationMode : uint8_t {
 //
 // BUTTON ACTIONS:
 // ---------------
-// SIMPLIFIED BUTTON CONTROLS (no double-click for instant response):
+// SIMPLIFIED BUTTON CONTROLS (short press and long press only):
 //
 // On Main Screens (Status, GPS, Network, Info, QR):
 //   - Short press:     Next screen
 //   - Long press:      Enter settings menu
-//   - Very long press: Force TX (shows "TX Sent!" on screen)
 //
 // In Settings Menu:
 //   - Short press:     Next menu item
@@ -100,7 +99,6 @@ enum class OperationMode : uint8_t {
 //
 #define BTN_DEBOUNCE_MS         50
 #define BTN_LONG_PRESS_MS       2000    // 2 seconds for long press
-#define BTN_VERY_LONG_PRESS_MS  5000    // 5 seconds for Force TX
 
 // =============================================================================
 // DISPLAY CONFIGURATION
