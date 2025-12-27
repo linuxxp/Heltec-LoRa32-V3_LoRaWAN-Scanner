@@ -85,9 +85,17 @@ void loadSettings();
 // SETUP
 // =============================================================================
 void setup() {
-    // Initialize debug serial
+    // Initialize debug serial (USB CDC on ESP32-S3)
     DEBUG_SERIAL.begin(DEBUG_BAUD);
-    delay(1000);
+
+    // Wait for USB CDC to be ready (ESP32-S3 specific)
+    // This ensures serial output is visible from the start
+    uint32_t serialTimeout = millis() + 3000;  // Max 3 seconds wait
+    while (!DEBUG_SERIAL && millis() < serialTimeout) {
+        delay(10);
+    }
+    delay(100);  // Extra stabilization delay
+
     DEBUG_PRINTLN("\n\n=================================");
     DEBUG_PRINTLN("  LoRaWAN Signal Scanner v" FIRMWARE_VERSION);
     DEBUG_PRINTLN("=================================\n");
