@@ -316,9 +316,24 @@ void handleMenuNavigation(ButtonEvent event) {
                     // Show QR code screen
                     DEBUG_PRINTLN("[MENU] Show QR code");
                     display.showQRScreen();
-                } else if (item == MenuItem::ABOUT) {
-                    // Show info screen and exit menu
-                    display.setState(UIState::SCREEN_INFO);
+                } else if (item == MenuItem::FORCE_TX) {
+                    // Force send measurement
+                    DEBUG_PRINTLN("[MENU] Force TX");
+
+                    if (!gps.hasValidFix()) {
+                        display.showNotification("No GPS Fix!", 2000);
+                    } else if (!state.loraJoined) {
+                        display.showNotification("Not Joined!", 2000);
+                    } else {
+                        display.showNotification("Sending...", 10000);
+                        display.update();  // Force immediate display update
+
+                        if (sendMeasurement()) {
+                            display.showNotification("TX Sent!", 2000);
+                        } else {
+                            display.showNotification("TX Failed!", 2000);
+                        }
+                    }
                 } else {
                     // Enter edit mode for settings
                     display.menuSelect();

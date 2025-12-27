@@ -35,8 +35,8 @@ enum class MenuItem : uint8_t {
     SPREADING_FACTOR,
     GPS_DISTANCE,
     FORCE_JOIN,
+    FORCE_TX,       // Force send measurement
     SHOW_QR,
-    ABOUT,
     EXIT,           // Exit menu and save
     MENU_COUNT
 };
@@ -296,7 +296,7 @@ inline void DisplayManager::menuSelect() {
     if (_state == UIState::MENU_MAIN) {
         // Action items (handled in main, don't enter edit mode)
         if (_selectedItem == MenuItem::FORCE_JOIN ||
-            _selectedItem == MenuItem::ABOUT ||
+            _selectedItem == MenuItem::FORCE_TX ||
             _selectedItem == MenuItem::SHOW_QR ||
             _selectedItem == MenuItem::EXIT) {
             // These are handled in main.cpp
@@ -604,8 +604,8 @@ inline const char* DisplayManager::getMenuItemName(MenuItem item) {
         case MenuItem::SPREADING_FACTOR: return "SF";
         case MenuItem::GPS_DISTANCE: return "GPS Dist";
         case MenuItem::FORCE_JOIN: return "Force Join";
+        case MenuItem::FORCE_TX: return "Force TX";
         case MenuItem::SHOW_QR: return "Show QR";
-        case MenuItem::ABOUT: return "About";
         case MenuItem::EXIT: return "< Exit";
         default: return "?";
     }
