@@ -89,10 +89,9 @@ void setup() {
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, HIGH);  // LED on during init
 
-    // Initialize debug serial (USB CDC on ESP32-S3)
+    // Initialize debug serial (UART0 via CP2102)
     DEBUG_SERIAL.begin(DEBUG_BAUD);
-    DEBUG_SERIAL.setTxTimeoutMs(0);  // Don't block if USB not connected
-    delay(2000);  // Give USB time to enumerate
+    delay(100);  // Short delay for serial to stabilize
 
     // Fast blink to indicate starting
     for (int i = 0; i < 6; i++) {
@@ -103,7 +102,6 @@ void setup() {
     DEBUG_PRINTLN("\n\n=================================");
     DEBUG_PRINTLN("  LoRaWAN Signal Scanner v" FIRMWARE_VERSION);
     DEBUG_PRINTLN("=================================\n");
-    DEBUG_PRINTLN("[SERIAL] USB CDC initialized");
     DEBUG_PRINTF("[DEBUG] Free heap: %d bytes\n", ESP.getFreeHeap());
 
     // Initialize components
