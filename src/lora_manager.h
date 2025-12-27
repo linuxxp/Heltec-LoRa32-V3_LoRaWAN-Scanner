@@ -263,17 +263,26 @@ inline bool LoRaManager::send(const uint8_t* data, size_t len, uint8_t port) {
     DEBUG_PRINTF("[LORA] Sending %d bytes on port %d...\n", len, port);
     _state = LoRaState::SENDING;
 
+    // Downlink buffer (required by RadioLib even if we don't use it)
+    uint8_t downlinkData[256];
+    size_t downlinkLen = sizeof(downlinkData);
+
     // Send uplink (confirmed = false for now)
     int16_t state = _node->sendReceive(
         (uint8_t*)data,
         len,
         port,
-        nullptr,    // No downlink buffer
-        nullptr,    // No downlink length
+        downlinkData,
+        &downlinkLen,
         false       // Unconfirmed uplink
     );
 
     _lastTxTime = millis();
+
+    // Check if we received a downlink
+    if (downlinkLen > 0 && state == RADIOLIB_ERR_NONE) {
+        DEBUG_PRINTF("[LORA] Received downlink: %d bytes\n", downlinkLen);
+    }
 
     if (state == RADIOLIB_ERR_NONE || state == RADIOLIB_LORAWAN_NO_DOWNLINK) {
         DEBUG_PRINTLN("[LORA] Send successful");
