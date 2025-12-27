@@ -16,6 +16,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <esp_sleep.h>
 #include "config.h"
 #include "credentials_generator.h"
 #include "button_handler.h"
@@ -29,6 +30,13 @@
 // NVS namespace for settings
 #define NVS_NAMESPACE "lora_scanner"
 Preferences preferences;
+
+// =============================================================================
+// DEEP SLEEP CONFIGURATION
+// =============================================================================
+// RTC memory survives deep sleep - used to track sleep cycles
+RTC_DATA_ATTR uint32_t deepSleepCycles = 0;
+RTC_DATA_ATTR bool wasInDeepSleep = false;
 
 // =============================================================================
 // GLOBAL OBJECTS
@@ -81,6 +89,11 @@ void updateDisplayData();
 void saveSettings();
 void loadSettings();
 
+// Deep sleep functions
+void enterDeepSleep();
+void handleDeepSleepWake();
+bool isButtonWake();
+
 // =============================================================================
 // SETUP
 // =============================================================================
@@ -93,6 +106,9 @@ void setup() {
     DEBUG_SERIAL.begin(DEBUG_BAUD);
     delay(100);  // Short delay for serial to stabilize
 
+    // Check wake reason BEFORE full initialization
+    esp_sleep_wakeup_cause_t wakeReason = esp_sleep_get_wakeup_cause();
+
     // Fast blink to indicate starting
     for (int i = 0; i < 6; i++) {
         digitalWrite(LED_PIN, i % 2);
@@ -102,6 +118,24 @@ void setup() {
     DEBUG_PRINTLN("\n\n=================================");
     DEBUG_PRINTLN("  LoRaWAN Signal Scanner v" FIRMWARE_VERSION);
     DEBUG_PRINTLN("=================================\n");
+
+    // Report wake reason
+    if (wasInDeepSleep) {
+        deepSleepCycles++;
+        DEBUG_PRINTF("[WAKE] Deep sleep cycles: %lu\n", deepSleepCycles);
+        switch (wakeReason) {
+            case ESP_SLEEP_WAKEUP_TIMER:
+                DEBUG_PRINTLN("[WAKE] Woke up from TIMER");
+                break;
+            case ESP_SLEEP_WAKEUP_EXT0:
+                DEBUG_PRINTLN("[WAKE] Woke up from BUTTON - will exit sleep mode");
+                // Don't reset wasInDeepSleep here - let handleDeepSleepWake() handle mode change
+                break;
+            default:
+                DEBUG_PRINTF("[WAKE] Woke up from other: %d\n", wakeReason);
+                break;
+        }
+    }
     DEBUG_PRINTF("[DEBUG] Free heap: %d bytes\n", ESP.getFreeHeap());
 
     // Initialize components
@@ -206,7 +240,8 @@ void loop() {
             break;
 
         case OperationMode::DEEP_SLEEP:
-            // Handle in separate function when implemented
+            // In deep sleep mode: wait for GPS, send, then sleep
+            handleDeepSleepWake();
             break;
     }
 
@@ -578,4 +613,146 @@ void loadSettings() {
 
     DEBUG_PRINTF("[NVS] Settings loaded: mode=%d, interval=%d, dist=%d, pwr=%d, sf=%d\n",
         (int)state.mode, state.interval, state.gpsDistance, txPower, sf);
+}
+
+// =============================================================================
+// DEEP SLEEP FUNCTIONS
+// =============================================================================
+void enterDeepSleep() {
+    uint32_t sleepSeconds = state.interval;
+
+    // Clamp to deep sleep limits
+    if (sleepSeconds < DEEP_SLEEP_INTERVAL_MIN) sleepSeconds = DEEP_SLEEP_INTERVAL_MIN;
+    if (sleepSeconds > DEEP_SLEEP_INTERVAL_MAX) sleepSeconds = DEEP_SLEEP_INTERVAL_MAX;
+
+    DEBUG_PRINTF("[SLEEP] Entering deep sleep for %lu seconds...\n", sleepSeconds);
+
+    // Show notification before sleep
+    display.showNotification("Sleeping...", 1500);
+    display.update();
+    delay(1500);
+
+    // Turn off display (VEXT HIGH = OFF)
+    display.off();
+    digitalWrite(VEXT_CTRL, HIGH);
+
+    // Turn off GPS
+    digitalWrite(GPS_EN_PIN, LOW);
+
+    // Put LoRa radio to sleep
+    lora.sleep();
+
+    // Turn off LED
+    digitalWrite(LED_PIN, LOW);
+
+    // Mark that we're in deep sleep mode
+    wasInDeepSleep = true;
+
+    // Configure timer wake source
+    esp_sleep_enable_timer_wakeup((uint64_t)sleepSeconds * 1000000ULL);
+
+    // Configure button wake source (GPIO0, active LOW)
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)USER_BUTTON, 0);  // 0 = LOW level triggers wake
+
+    DEBUG_PRINTLN("[SLEEP] Goodbye!");
+    DEBUG_SERIAL.flush();
+
+    // Enter deep sleep
+    esp_deep_sleep_start();
+
+    // Code never reaches here - device will reset on wake
+}
+
+void handleDeepSleepWake() {
+    // State machine for deep sleep operation
+    static enum { WAIT_GPS, WAIT_JOIN, SEND, DONE } dsState = WAIT_GPS;
+    static uint32_t stateStart = 0;
+    static uint32_t lastGpsCheck = 0;
+
+    // If woke from button press during deep sleep, exit to manual mode
+    if (wasInDeepSleep && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+        DEBUG_PRINTLN("[SLEEP] Button wake - exiting to Manual mode");
+        wasInDeepSleep = false;
+        state.mode = OperationMode::MANUAL;
+        display.setMode(state.mode);
+        display.showNotification("Manual Mode", 2000);
+        saveSettings();
+        dsState = WAIT_GPS;  // Reset state for next time
+        return;
+    }
+
+    uint32_t now = millis();
+
+    switch (dsState) {
+        case WAIT_GPS:
+            // Wait for GPS fix (with timeout)
+            if (stateStart == 0) {
+                stateStart = now;
+                display.showNotification("GPS Fix...", 60000);
+                DEBUG_PRINTLN("[SLEEP] Waiting for GPS fix...");
+            }
+
+            // Check GPS status every second
+            if (now - lastGpsCheck > 1000) {
+                lastGpsCheck = now;
+                if (gps.hasValidFix()) {
+                    DEBUG_PRINTLN("[SLEEP] GPS fix obtained");
+                    dsState = WAIT_JOIN;
+                    stateStart = 0;
+                } else if (now - stateStart > GPS_FIX_TIMEOUT_MS) {
+                    DEBUG_PRINTLN("[SLEEP] GPS timeout - sleeping without TX");
+                    dsState = DONE;  // Skip TX, go back to sleep
+                }
+            }
+            break;
+
+        case WAIT_JOIN:
+            // Join network if needed
+            if (!state.loraJoined) {
+                if (stateStart == 0) {
+                    stateStart = now;
+                    display.showNotification("Joining...", 30000);
+                }
+                if (lora.join()) {
+                    state.loraJoined = true;
+                    display.setJoined(true);
+                    dsState = SEND;
+                    stateStart = 0;
+                } else if (now - stateStart > 60000) {
+                    DEBUG_PRINTLN("[SLEEP] Join timeout - sleeping");
+                    dsState = DONE;
+                }
+            } else {
+                dsState = SEND;
+            }
+            break;
+
+        case SEND:
+            // Send measurement
+            display.showNotification("Sending...", 10000);
+            display.update();
+
+            if (sendMeasurement()) {
+                display.showNotification("TX OK!", 1500);
+                display.update();
+                delay(1500);
+            } else {
+                display.showNotification("TX Fail", 1500);
+                display.update();
+                delay(1500);
+            }
+            dsState = DONE;
+            break;
+
+        case DONE:
+            // Go back to deep sleep
+            dsState = WAIT_GPS;  // Reset for next wake
+            stateStart = 0;
+            enterDeepSleep();
+            break;
+    }
+}
+
+bool isButtonWake() {
+    return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;
 }

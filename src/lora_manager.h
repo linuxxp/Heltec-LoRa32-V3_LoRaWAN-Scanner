@@ -68,6 +68,9 @@ public:
     bool restoreSession();
     void clearSession();
 
+    // Power management
+    void sleep();  // Put radio in low-power mode
+
 private:
     SX1262* _radio = nullptr;
     LoRaWANNode* _node = nullptr;
@@ -425,6 +428,18 @@ inline void LoRaManager::clearSession() {
     }
 
     DEBUG_PRINTLN("[LORA] Session cleared - DevNonce reset to 0");
+}
+
+inline void LoRaManager::sleep() {
+    if (_radio) {
+        // Put SX1262 in sleep mode (lowest power consumption)
+        int16_t state = _radio->sleep(false);  // false = warm start (keeps config)
+        if (state == RADIOLIB_ERR_NONE) {
+            DEBUG_PRINTLN("[LORA] Radio in sleep mode");
+        } else {
+            DEBUG_PRINTF("[LORA] Radio sleep failed: %d\n", state);
+        }
+    }
 }
 
 #endif // LORA_MANAGER_H
