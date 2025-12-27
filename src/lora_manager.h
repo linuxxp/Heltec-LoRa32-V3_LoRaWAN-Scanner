@@ -137,7 +137,24 @@ inline bool LoRaManager::begin() {
     // Create LoRaWAN node with EU868 band
     _node = new LoRaWANNode(_radio, &EU868);
 
-    // Try to restore saved session/nonces
+    // Setup OTAA credentials ONCE (must be done before restore)
+    const LoRaWANCredentials& creds = CredentialsGenerator::getCredentials();
+
+    // Convert byte arrays to uint64_t (RadioLib expects this format)
+    uint64_t joinEUI = 0;
+    uint64_t devEUI = 0;
+    for (int i = 0; i < 8; i++) {
+        joinEUI |= ((uint64_t)creds.appEui[i]) << (i * 8);
+        devEUI |= ((uint64_t)creds.devEui[i]) << (i * 8);
+    }
+
+    DEBUG_PRINTF("[LORA] DevEUI: %s\n", CredentialsGenerator::getDevEuiStr());
+    DEBUG_PRINTF("[LORA] JoinEUI: %s\n", CredentialsGenerator::getAppEuiStr());
+
+    // Initialize OTAA - this must be called ONCE before activateOTAA
+    _node->beginOTAA(joinEUI, devEUI, (uint8_t*)creds.appKey, (uint8_t*)creds.appKey);
+
+    // Try to restore saved session/nonces (AFTER beginOTAA)
     restoreSession();
 
     DEBUG_PRINTLN("[LORA] Radio initialized successfully");
@@ -188,26 +205,7 @@ inline bool LoRaManager::join(bool force) {
     _state = LoRaState::JOINING;
 
     DEBUG_PRINTF("[LORA] Starting OTAA join (attempt %d/%d)...\n", _joinAttempts, JOIN_MAX_ATTEMPTS);
-
-    // Get credentials from generator
-    const LoRaWANCredentials& creds = CredentialsGenerator::getCredentials();
-
-    // Convert byte arrays to uint64_t (RadioLib expects this format)
-    // EUIs are stored LSB first, need to convert to uint64_t
-    uint64_t joinEUI = 0;
-    uint64_t devEUI = 0;
-    for (int i = 0; i < 8; i++) {
-        joinEUI |= ((uint64_t)creds.appEui[i]) << (i * 8);
-        devEUI |= ((uint64_t)creds.devEui[i]) << (i * 8);
-    }
-
     DEBUG_PRINTF("[LORA] DevEUI: %s\n", CredentialsGenerator::getDevEuiStr());
-    DEBUG_PRINTF("[LORA] JoinEUI: %s\n", CredentialsGenerator::getAppEuiStr());
-
-    // Begin OTAA join
-    // For LoRaWAN 1.0.x, nwkKey and appKey are the same
-    _node->beginOTAA(joinEUI, devEUI, (uint8_t*)creds.appKey, (uint8_t*)creds.appKey);
-
     DEBUG_PRINTLN("[LORA] Sending join request...");
 
     // Try to activate - this sends ONE join request and waits for accept
@@ -391,7 +389,20 @@ inline void LoRaManager::clearSession() {
     _prefs.clear();
     _prefs.end();
     _joined = false;
-    DEBUG_PRINTLN("[LORA] Session cleared from NVS");
+
+    // Re-initialize OTAA to reset DevNonce to 0
+    if (_node) {
+        const LoRaWANCredentials& creds = CredentialsGenerator::getCredentials();
+        uint64_t joinEUI = 0;
+        uint64_t devEUI = 0;
+        for (int i = 0; i < 8; i++) {
+            joinEUI |= ((uint64_t)creds.appEui[i]) << (i * 8);
+            devEUI |= ((uint64_t)creds.devEui[i]) << (i * 8);
+        }
+        _node->beginOTAA(joinEUI, devEUI, (uint8_t*)creds.appKey, (uint8_t*)creds.appKey);
+    }
+
+    DEBUG_PRINTLN("[LORA] Session cleared - DevNonce reset to 0");
 }
 
 #endif // LORA_MANAGER_H
