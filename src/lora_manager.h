@@ -83,6 +83,7 @@ private:
     bool _lastTxSuccess = false;
     uint32_t _txCount = 0;
     uint32_t _txFailed = 0;
+    uint8_t _txFailedConsecutive = 0;  // Consecutive failures trigger rejoin
 
     bool _joined = false;
     uint8_t _joinAttempts = 0;
@@ -278,6 +279,7 @@ inline bool LoRaManager::send(const uint8_t* data, size_t len, uint8_t port) {
         DEBUG_PRINTLN("[LORA] Send successful");
         _lastTxSuccess = true;
         _txCount++;
+        _txFailedConsecutive = 0;  // Reset consecutive failures
         _state = LoRaState::JOINED;
         saveSession();  // Save updated frame counters
         return true;
@@ -286,7 +288,22 @@ inline bool LoRaManager::send(const uint8_t* data, size_t len, uint8_t port) {
         _lastError = state;
         _lastTxSuccess = false;
         _txFailed++;
-        _state = LoRaState::JOINED;  // Still joined, just failed to send
+        _txFailedConsecutive++;
+
+        // Check for session-related errors that require rejoin
+        if (state == -1101 || state == -1102 || state == RADIOLIB_ERR_NETWORK_NOT_JOINED) {
+            DEBUG_PRINTLN("[LORA] -> Session error - will rejoin on next attempt");
+            _joined = false;
+            _state = LoRaState::IDLE;
+            clearSession();  // Clear invalid session
+        } else if (_txFailedConsecutive >= 3) {
+            DEBUG_PRINTLN("[LORA] -> 3 consecutive failures - forcing rejoin");
+            _joined = false;
+            _state = LoRaState::IDLE;
+            clearSession();
+        } else {
+            _state = LoRaState::JOINED;  // Still joined, just failed to send
+        }
         return false;
     }
 }
