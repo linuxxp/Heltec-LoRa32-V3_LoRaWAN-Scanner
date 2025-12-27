@@ -85,20 +85,30 @@ void loadSettings();
 // SETUP
 // =============================================================================
 void setup() {
+    // Initialize LED first for visual feedback
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH);  // LED on during init
+
     // Initialize debug serial (USB CDC on ESP32-S3)
     DEBUG_SERIAL.begin(DEBUG_BAUD);
 
-    // Wait for USB CDC to be ready (ESP32-S3 specific)
-    // This ensures serial output is visible from the start
-    uint32_t serialTimeout = millis() + 3000;  // Max 3 seconds wait
+    // Wait for USB CDC to be ready - blink LED while waiting
+    uint32_t serialTimeout = millis() + 5000;  // Max 5 seconds wait
     while (!DEBUG_SERIAL && millis() < serialTimeout) {
-        delay(10);
+        digitalWrite(LED_PIN, !digitalRead(LED_PIN));  // Toggle LED
+        delay(100);
     }
-    delay(100);  // Extra stabilization delay
+
+    // Fast blink to indicate serial ready
+    for (int i = 0; i < 6; i++) {
+        digitalWrite(LED_PIN, i % 2);
+        delay(50);
+    }
 
     DEBUG_PRINTLN("\n\n=================================");
     DEBUG_PRINTLN("  LoRaWAN Signal Scanner v" FIRMWARE_VERSION);
     DEBUG_PRINTLN("=================================\n");
+    DEBUG_PRINTLN("[SERIAL] USB CDC initialized");
 
     // Initialize components
     DEBUG_PRINTLN("[INIT] Starting initialization...");
