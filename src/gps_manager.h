@@ -97,9 +97,9 @@ inline void GPSManager::update() {
         }
     }
 
-    // Print GPS stats periodically (every 10 seconds)
+    // Print GPS stats periodically (every 30 seconds)
     uint32_t now = millis();
-    if ((now - _lastStatsTime) >= 10000) {
+    if ((now - _lastStatsTime) >= 30000) {
         _lastStatsTime = now;
         printStats();
     }
