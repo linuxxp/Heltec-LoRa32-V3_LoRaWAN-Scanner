@@ -366,15 +366,16 @@ inline bool LoRaManager::restoreSession() {
 
     _prefs.begin(NVS_LORA_NAMESPACE, true);
 
-    // Check if we have saved nonces
+    // Only restore nonces (DevNonce) to avoid duplicates
+    // We do NOT restore session - always do fresh join on startup
     size_t noncesLen = _prefs.getBytesLength(NVS_NONCES_KEY);
     if (noncesLen == 0) {
-        DEBUG_PRINTLN("[LORA] No saved nonces found");
+        DEBUG_PRINTLN("[LORA] No saved nonces - starting fresh");
         _prefs.end();
         return false;
     }
 
-    // Restore nonces
+    // Restore nonces (contains DevNonce counter)
     uint8_t noncesBuffer[RADIOLIB_LORAWAN_NONCES_BUF_SIZE];
     _prefs.getBytes(NVS_NONCES_KEY, noncesBuffer, sizeof(noncesBuffer));
 
@@ -385,23 +386,12 @@ inline bool LoRaManager::restoreSession() {
         return false;
     }
 
-    DEBUG_PRINTLN("[LORA] Nonces restored from NVS");
+    DEBUG_PRINTLN("[LORA] DevNonce restored - will do fresh join");
 
-    // Try to restore session (if device was previously joined)
-    size_t sessionLen = _prefs.getBytesLength(NVS_SESSION_KEY);
-    if (sessionLen > 0) {
-        uint8_t sessionBuffer[RADIOLIB_LORAWAN_SESSION_BUF_SIZE];
-        _prefs.getBytes(NVS_SESSION_KEY, sessionBuffer, sizeof(sessionBuffer));
-
-        state = _node->setBufferSession(sessionBuffer);
-        if (state == RADIOLIB_ERR_NONE) {
-            _joined = true;
-            _state = LoRaState::JOINED;
-            DEBUG_PRINTLN("[LORA] Session restored - already joined!");
-        } else {
-            DEBUG_PRINTF("[LORA] Session restore failed: %d (will rejoin)\n", state);
-        }
-    }
+    // Note: We intentionally do NOT restore session
+    // Fresh join on every restart is more reliable than session restore
+    _joined = false;
+    _state = LoRaState::IDLE;
 
     _prefs.end();
     return true;
