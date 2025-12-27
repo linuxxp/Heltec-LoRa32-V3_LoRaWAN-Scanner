@@ -229,17 +229,11 @@ inline bool LoRaManager::join(bool force) {
             case RADIOLIB_ERR_RX_TIMEOUT:
                 DEBUG_PRINTLN("[LORA] -> RX timeout (missed RX window or no response)");
                 break;
-            case RADIOLIB_LORAWAN_INVALID_DOWNLINK_LEN:
-                DEBUG_PRINTLN("[LORA] -> Invalid downlink length");
-                break;
             case RADIOLIB_ERR_CRC_MISMATCH:
                 DEBUG_PRINTLN("[LORA] -> CRC mismatch in received data");
                 break;
-            case RADIOLIB_ERR_INVALID_MIC:
-                DEBUG_PRINTLN("[LORA] -> Invalid MIC (wrong keys or corrupted)");
-                break;
-            case RADIOLIB_ERR_INVALID_CHANNEL:
-                DEBUG_PRINTLN("[LORA] -> Invalid channel configuration");
+            case RADIOLIB_LORAWAN_SESSION_RESTORED:
+                DEBUG_PRINTLN("[LORA] -> Session was restored but join still needed");
                 break;
             default:
                 DEBUG_PRINTF("[LORA] -> Error code: %d\n", state);
