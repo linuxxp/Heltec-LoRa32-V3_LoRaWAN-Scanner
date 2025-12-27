@@ -285,8 +285,9 @@ void handleMenuNavigation(ButtonEvent event) {
                     saveSettings();
                     display.showNotification("Saved!", 1000);
                 } else if (item == MenuItem::FORCE_JOIN) {
-                    // Force rejoin - show notification immediately
-                    DEBUG_PRINTLN("[MENU] Force rejoin");
+                    // Force rejoin - clear old session and start fresh
+                    DEBUG_PRINTLN("[MENU] Force rejoin (clearing old session)");
+                    lora.clearSession();  // Clear saved nonces/session for fresh start
                     display.showNotification("Joining...", 30000);  // Long timeout
                     display.update();  // Force immediate display update
 

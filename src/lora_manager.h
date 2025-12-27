@@ -3,8 +3,14 @@
 
 #include <Arduino.h>
 #include <RadioLib.h>
+#include <Preferences.h>
 #include "config.h"
 #include "credentials_generator.h"
+
+// NVS keys for LoRaWAN persistence
+#define NVS_LORA_NAMESPACE  "lorawan"
+#define NVS_NONCES_KEY      "nonces"
+#define NVS_SESSION_KEY     "session"
 
 // =============================================================================
 // LORAWAN STATE
@@ -57,9 +63,15 @@ public:
     uint32_t getTxCount() const { return _txCount; }
     uint32_t getTxFailed() const { return _txFailed; }
 
+    // Session persistence (for DevNonce)
+    void saveSession();
+    bool restoreSession();
+    void clearSession();
+
 private:
     SX1262* _radio = nullptr;
     LoRaWANNode* _node = nullptr;
+    Preferences _prefs;
 
     LoRaState _state = LoRaState::IDLE;
     int16_t _lastError = 0;
@@ -124,6 +136,9 @@ inline bool LoRaManager::begin() {
 
     // Create LoRaWAN node with EU868 band
     _node = new LoRaWANNode(_radio, &EU868);
+
+    // Try to restore saved session/nonces
+    restoreSession();
 
     DEBUG_PRINTLN("[LORA] Radio initialized successfully");
     _state = LoRaState::IDLE;
@@ -203,6 +218,7 @@ inline bool LoRaManager::join(bool force) {
         _joined = true;
         _state = LoRaState::JOINED;
         _joinAttempts = 0;  // Reset on success
+        saveSession();  // Save session and nonces to NVS
         return true;
     } else {
         DEBUG_PRINTF("[LORA] Join failed with error: %d\n", state);
@@ -223,6 +239,7 @@ inline bool LoRaManager::join(bool force) {
         _lastError = state;
         _state = LoRaState::IDLE;  // Go back to IDLE, not ERROR
         _joined = false;
+        saveSession();  // Save nonces even on failure (DevNonce was incremented)
         return false;
     }
 }
@@ -258,6 +275,7 @@ inline bool LoRaManager::send(const uint8_t* data, size_t len, uint8_t port) {
         _lastTxSuccess = true;
         _txCount++;
         _state = LoRaState::JOINED;
+        saveSession();  // Save updated frame counters
         return true;
     } else {
         DEBUG_PRINTF("[LORA] Send failed: %d\n", state);
@@ -297,6 +315,83 @@ inline bool LoRaManager::shouldAutoRetryJoin() const {
     // Check if enough time has passed since last join attempt
     uint32_t elapsed = millis() - _lastJoinAttempt;
     return elapsed >= JOIN_AUTO_RETRY_MS;
+}
+
+inline void LoRaManager::saveSession() {
+    if (!_node) return;
+
+    // Get nonces buffer (contains DevNonce)
+    uint8_t* noncesBuffer = _node->getBufferNonces();
+    size_t noncesLen = RADIOLIB_LORAWAN_NONCES_BUF_SIZE;
+
+    _prefs.begin(NVS_LORA_NAMESPACE, false);
+    _prefs.putBytes(NVS_NONCES_KEY, noncesBuffer, noncesLen);
+
+    // If joined, also save session for potential session restore
+    if (_joined) {
+        uint8_t* sessionBuffer = _node->getBufferSession();
+        size_t sessionLen = RADIOLIB_LORAWAN_SESSION_BUF_SIZE;
+        _prefs.putBytes(NVS_SESSION_KEY, sessionBuffer, sessionLen);
+        DEBUG_PRINTLN("[LORA] Session and nonces saved to NVS");
+    } else {
+        DEBUG_PRINTLN("[LORA] Nonces saved to NVS");
+    }
+
+    _prefs.end();
+}
+
+inline bool LoRaManager::restoreSession() {
+    if (!_node) return false;
+
+    _prefs.begin(NVS_LORA_NAMESPACE, true);
+
+    // Check if we have saved nonces
+    size_t noncesLen = _prefs.getBytesLength(NVS_NONCES_KEY);
+    if (noncesLen == 0) {
+        DEBUG_PRINTLN("[LORA] No saved nonces found");
+        _prefs.end();
+        return false;
+    }
+
+    // Restore nonces
+    uint8_t noncesBuffer[RADIOLIB_LORAWAN_NONCES_BUF_SIZE];
+    _prefs.getBytes(NVS_NONCES_KEY, noncesBuffer, sizeof(noncesBuffer));
+
+    int16_t state = _node->setBufferNonces(noncesBuffer);
+    if (state != RADIOLIB_ERR_NONE) {
+        DEBUG_PRINTF("[LORA] Failed to restore nonces: %d\n", state);
+        _prefs.end();
+        return false;
+    }
+
+    DEBUG_PRINTLN("[LORA] Nonces restored from NVS");
+
+    // Try to restore session (if device was previously joined)
+    size_t sessionLen = _prefs.getBytesLength(NVS_SESSION_KEY);
+    if (sessionLen > 0) {
+        uint8_t sessionBuffer[RADIOLIB_LORAWAN_SESSION_BUF_SIZE];
+        _prefs.getBytes(NVS_SESSION_KEY, sessionBuffer, sizeof(sessionBuffer));
+
+        state = _node->setBufferSession(sessionBuffer);
+        if (state == RADIOLIB_ERR_NONE) {
+            _joined = true;
+            _state = LoRaState::JOINED;
+            DEBUG_PRINTLN("[LORA] Session restored - already joined!");
+        } else {
+            DEBUG_PRINTF("[LORA] Session restore failed: %d (will rejoin)\n", state);
+        }
+    }
+
+    _prefs.end();
+    return true;
+}
+
+inline void LoRaManager::clearSession() {
+    _prefs.begin(NVS_LORA_NAMESPACE, false);
+    _prefs.clear();
+    _prefs.end();
+    _joined = false;
+    DEBUG_PRINTLN("[LORA] Session cleared from NVS");
 }
 
 #endif // LORA_MANAGER_H
