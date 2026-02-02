@@ -604,6 +604,14 @@ The white LED (GPIO35) indicates device status:
 
 ```
 Heltec-LoRa32-V3_LoRaWAN-Scanner/
+├── chirpstack-decoder/
+│   ├── decoder.js            # ChirpStack payload decoder (JavaScript)
+│   └── README.md             # Decoder setup instructions
+├── nodered-flow/
+│   ├── function-node.js      # Node-RED function node for InfluxDB
+│   └── README.md             # Node-RED flow setup instructions
+├── Docs/
+│   └── ...                   # Hardware schematics and datasheets
 ├── include/
 │   ├── config.h              # Main configuration
 │   ├── credentials.h         # LoRaWAN credentials (template)
